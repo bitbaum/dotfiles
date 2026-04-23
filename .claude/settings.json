@@ -6,7 +6,7 @@
         "hooks": [
           {
             "type": "command",
-            "command": "DISPLAY=:0 DBUS_SESSION_BUS_ADDRESS=unix:path=/run/user/1000/bus kdialog --passivepopup 'Claude Code is waiting for your input' 10 --title 'Claude Code'"
+            "command": "/home/g/.claude/hooks/notification.sh"
           }
         ]
       }
@@ -17,7 +17,8 @@
         "hooks": [
           {
             "type": "command",
-            "command": "DISPLAY=:0 DBUS_SESSION_BUS_ADDRESS=unix:path=/run/user/1000/bus kdialog --passivepopup 'Claude finished' 6 --title 'Claude Code'"
+            "command": "/home/g/.claude/hooks/stop.sh",
+            "timeout": 120
           }
         ]
       }
@@ -47,5 +48,6 @@
     ]
   },
   "autoUpdatesChannel": "stable",
-  "voiceEnabled": true
+  "voiceEnabled": true,
+  "model": "sonnet"
 }

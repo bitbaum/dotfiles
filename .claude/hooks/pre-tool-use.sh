@@ -24,17 +24,18 @@ if [ "$TOOL_NAME" = "Bash" ]; then
   DANGEROUS_PATTERN='(rm\s+-[rRfF]{1,3}\b|git\s+(push\s+[^|&;]*(-f|--force)|reset\s+--hard|clean\s+-[fdxX])|DROP\s+(TABLE|DATABASE|SCHEMA)|TRUNCATE\s+TABLE|dd\s+if=|mkfs\b|:\(\)\{.*\}|chmod\s+-R\s+777)'
 
   if echo "$COMMAND" | grep -qEi "$DANGEROUS_PATTERN"; then
-    DETAIL=$(echo "$COMMAND" | head -c 400)
     DISPLAY=:0 DBUS_SESSION_BUS_ADDRESS=unix:path=/run/user/1000/bus \
-      paplay /usr/share/sounds/freedesktop/stereo/message-new-instant.oga &
-    DISPLAY=:0 DBUS_SESSION_BUS_ADDRESS=unix:path=/run/user/1000/bus \
-      kdialog \
-        --title "Claude Code" \
-        --icon dialog-question \
-        --yesno "<b>Bash</b><br><br><tt>$(echo "$DETAIL" | sed 's/&/\&amp;/g; s/</\&lt;/g; s/>/\&gt;/g')</tt>" \
-        --yes-label "Allow" \
-        --no-label "Deny" 2>/dev/null
-    [ $? -eq 0 ] && echo "$ALLOW" || echo "$DENY"
+      paplay /usr/share/sounds/freedesktop/stereo/dialog-warning.oga 2>/dev/null &
+
+    # Write command to temp file so Python receives it safely (no quoting issues)
+    TMPFILE=$(mktemp /tmp/claude-confirm-XXXXXX)
+    echo "$COMMAND" > "$TMPFILE"
+
+    CHOICE=$(DISPLAY=:0 DBUS_SESSION_BUS_ADDRESS=unix:path=/run/user/1000/bus \
+      python3 ~/.claude/hooks/claude-popup.py confirm "Bash" "$TMPFILE" 2>/dev/null)
+    rm -f "$TMPFILE"
+
+    [ "$CHOICE" = "allow" ] && echo "$ALLOW" || echo "$DENY"
     exit 0
   fi
 

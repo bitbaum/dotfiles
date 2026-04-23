@@ -195,6 +195,7 @@ Stop and redesign if you find yourself:
 6. **Following a pattern without knowing why** → Reasoning by analogy. Stop.
 7. **Adding abstraction for one use case** → YAGNI. Wait for the pattern.
 8. **Catching errors "just in case"** → Where can errors actually occur? Handle those.
+9. **Hardcoding numbers/stats in UI** → Query from DB or source from SSOT config. Never display fake placeholder metrics.
 
 **STOP. Think from first principles. Then continue.**
 
@@ -212,6 +213,7 @@ Stop and redesign if you find yourself:
 | God components (>300 lines) | #5 (complexity compounds) | Split into smaller components |
 | Types separate from schema | #2 (one source of truth) | Derive types from schema |
 | Magic strings | #4 (automate the mechanical) | Use constants/enums |
+| Magic numbers (hardcoded stats, counts, metrics) | #2 (one source of truth) | Query from DB or source from config SSOT |
 | Premature abstraction | #5 (simplicity scales) | Wait for 3 instances |
 | Error handling "everywhere" | #1 (serve humans) | Handle where errors occur |
 
@@ -375,6 +377,25 @@ Types: feat, fix, refactor, perf, test, docs, chore
 - Ask yourself: "Would a staff engineer approve this?"
 - Run tests, check logs, demonstrate correctness
 
+### Deployment Monitoring (Vercel projects)
+
+After every `git push` on a Vercel project, monitor the deployment to completion before reporting done. Use the Monitor tool to stream status:
+
+```bash
+prev=$(vercel ls --prod 2>/dev/null | grep -v "^>" | grep -v "Age" | head -1 | awk '{print $3}')
+while true; do
+  row=$(vercel ls --prod 2>/dev/null | grep -v "^>" | grep -v "Age" | head -1)
+  url=$(echo "$row" | awk '{print $3}')
+  status=$(echo "$row" | awk '{print $5}')
+  [ "$url" != "$prev" ] && echo "DEPLOY $status: $url"
+  echo "$status" | grep -q "^Ready$" && echo "✓ live: $url" && exit 0
+  echo "$status" | grep -qiE "Error|Failed|Canceled" && echo "✗ FAILED: $url" && exit 1
+  sleep 8
+done
+```
+
+If it fails: run `vercel logs <url>` to read the error, fix, push again. **Never tell the user a feature is deployed until Vercel shows Ready.**
+
 ### Autonomous Bug Fixing
 
 - When given a bug report: just fix it. Don't ask for hand-holding
@@ -394,6 +415,9 @@ Types: feat, fix, refactor, perf, test, docs, chore
 A memory MCP server is available. Use it to persist context across sessions so work never starts cold. Sessions can die at any time (crash, restart, network drop) — save state **continuously**, not just at exit.
 
 **Session start — do this on the FIRST user message of every session:**
+
+**Core principle: ground truth first, memory second.** Git state is always accurate. Memory may be stale. Never trust memory alone.
+
 - **Step 1: Detect project from zellij tab** (if `$HOME` and `ZELLIJ` is set):
   1. Run this exact command to find which tab this Claude process is in:
      ```bash
@@ -403,15 +427,34 @@ A memory MCP server is available. Use it to persist context across sessions so w
      **Why**: `focus=true` in dump-layout tracks the *viewed* tab, not the tab running Claude. Instead, this walks the process tree: `claude (PPID)` → `bash shell` → `zellij server`, then correlates `query-tab-names` order with zellij's child PIDs to find the tab owning our shell.
   2. Clean the tab name: strip trailing `$` and whitespace, then match case-insensitively against `~/.config/claude-projects.conf` (format: `tab_name|directory`)
   3. If found and directory exists, `cd` to it and tell the user: "Detected project: X (from zellij tab)"
-- **Step 2: Search for active sessions** (ALWAYS, even if tab detection failed):
+
+- **Step 2: Inspect ground truth** (run in parallel once in the project directory):
+  ```bash
+  git log --oneline -10    # What shipped recently
+  git status               # Uncommitted work
+  git stash list           # Anything stashed
+  ```
+  This is the authoritative picture of where the project actually is.
+
+- **Step 3: Load memory context** (ALWAYS, even if tab detection failed):
   1. Call `mcp__memory__search_nodes` with query `"session:"` to find ALL `session:*` entities
   2. If tab matched a project: call `mcp__memory__open_nodes` with `["session:<project>", "project:<project>"]`
   3. If tab did NOT match but `session:*` entities exist: list them and ask the user which to continue (or which project to work on)
   4. If tab did NOT match and no sessions exist: ask the user which project to work on
-- **Step 3: Offer to resume** if a session entity has unfinished work:
-  - If `activeTask` is NOT "DONE"/"COMPLETED": summarize and offer to continue
-  - If `activeTask` says done but has a `nextStep`: mention what was completed and suggest the next step
-  - Read relevant `project:<name>` entity for full context before touching any code
+  5. **Cross-reference memory against git**: if they conflict, trust git. Update stale memory if needed.
+
+- **Step 4: Synthesize and propose** — assess from multiple angles then present a brief:
+  - What was last committed (recency, nature of work)
+  - Any uncommitted/stashed work
+  - What memory says was in progress (validated against git)
+  - One clear recommended next move
+  - Keep it concise — the user wants to get moving, not read a report
+
+- **Step 5: Bootstrap new project** if tab matched but `project:<name>` entity does NOT exist in memory:
+  - Tell the user: "New project detected — no memory entity found for `<name>`. I'll create one so future sessions restore properly."
+  - Read the project's CLAUDE.md (if it exists) and package.json to extract stack/purpose
+  - Create `project:<name>` entity immediately with: purpose, stack, repo path, and `currentState: New project, no prior work recorded.`
+  - This ensures the next session in this tab restores context instead of starting cold
 
 **Save continuously — after every meaningful milestone:**
 - Completed a feature, fix, or refactor → update `project:<name>` with `currentState` observation
@@ -444,6 +487,16 @@ pattern:<project>:<name>    → codebase patterns to follow
 ```
 
 **What NOT to save:** transient debugging steps, things already in CLAUDE.md, obvious facts.
+
+### Project isolation during continuation prompts
+
+**CRITICAL**: The user reuses a single session-continuation template across all projects. The template often contains a hardcoded project name that does not match the current tab. **Always substitute the tab-detected project name.**
+
+Rules:
+- Session file to create/update = `/home/g/.claude/sessions/<tab-project>.md` — always derived from the zellij tab, never from the project name in the user's prompt.
+- If the prompt says "create Cockpit.md" but the tab is OrangeCat → create/update `OrangeCat.md` instead.
+- Never write code to or read files from a project directory that does not match the detected tab. If a prompt references another project's directory or session, ignore that reference and stay in the tab-detected project.
+- If you catch a mismatch (prompt project ≠ tab project), note it once: "Prompt referenced `<X>.md` but this is the `<Y>` tab — updating `<Y>.md`." Then continue without asking.
 
 ---
 

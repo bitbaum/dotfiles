@@ -379,3 +379,4 @@ claude() {
 
 # Secrets (passwords, tokens) — loaded from .env, which is gitignored
 [ -f "$HOME/.env" ] && source "$HOME/.env"
+alias claude-dashboard='DISPLAY=:0 python3 ~/.claude/hooks/claude-dashboard.py &'
