@@ -10,7 +10,7 @@ from PyQt6.QtWidgets import (
     QSizePolicy, QToolButton, QComboBox, QSlider, QGridLayout,
 )
 from PyQt6.QtCore import Qt, QThread, pyqtSignal
-from PyQt6.QtGui import QColor, QCursor, QPalette
+from PyQt6.QtGui import QColor, QCursor, QPalette, QFont
 
 # ── Paths ─────────────────────────────────────────────────────────────────────
 CONF     = Path(os.environ.get("CLAUDE_PROJECTS_CONF",
@@ -71,31 +71,42 @@ PROMPT_META = {
 }
 
 # ── Colours ───────────────────────────────────────────────────────────────────
-BG        = "#0a0c1b"
-SIDEBAR   = "#0d0f22"
-CARD      = "#111428"
-SURFACE   = "#161c38"
-SURFACE2  = "#1c2345"
-BORDER    = "#1e2548"
-BORDER2   = "#252d58"
+# ── Design tokens (SSOT — never hardcode these inline) ───────────────────────
+# Surface scale — deep navy dark theme
+BG        = "#080b1a"   # page background
+SIDEBAR   = "#0b0e1f"   # sidebar surface
+CARD      = "#0f1327"   # card background
+SURFACE   = "#151b36"   # raised surface (inputs, chips)
+SURFACE2  = "#1b2240"   # hover / selected surface
+BORDER    = "#1c2445"   # subtle divider
+BORDER2   = "#232c55"   # stronger divider
 
-TEXT1     = "#eef1ff"   # primary body — bright
-TEXT2     = "#9aa3d4"   # secondary — clearly readable
-TEXT3     = "#535c8a"   # tertiary — timestamps, hints
+# Typography scale
+TEXT1     = "#eef1ff"   # primary — near-white, high contrast
+TEXT2     = "#8d97c8"   # secondary — readable, not dominant
+TEXT3     = "#4a5278"   # tertiary — timestamps, labels, hints
 
-ACCENT    = "#7c86f5"
-ACCENT_BG = "#191e52"
-GREEN     = "#4ade80"
-GREEN_BG  = "#0c2a19"
-AMBER     = "#fbbf24"
-AMBER_BG  = "#241a00"
-RED       = "#f87171"
-RED_BG    = "#2a1010"
-CYAN      = "#38bdf8"
-CYAN_BG   = "#041c2e"
-PURPLE    = "#c084fc"
-PURPLE_BG = "#1e1035"
+# Semantic colours + their dark bg fills
+ACCENT    = "#7c86f5"   # indigo — default interactive
+ACCENT_BG = "#141847"
+GREEN     = "#34d97b"   # emerald — success, active, done
+GREEN_BG  = "#092217"
+AMBER     = "#f5a623"   # amber — warning, pending
+AMBER_BG  = "#201400"
+RED       = "#f46f6f"   # rose — error, critical
+RED_BG    = "#240d0d"
+CYAN      = "#22d3ee"   # cyan — info, next actions
+CYAN_BG   = "#031a22"
+PURPLE    = "#b57ef5"   # violet — UX/design/testing
+PURPLE_BG = "#180d30"
 
+# Spacing scale (8px grid)
+SP1 = 8;  SP2 = 16;  SP3 = 24;  SP4 = 32;  SP5 = 48
+
+# Border-radius scale
+R_SM = 8;  R_MD = 12;  R_LG = 16;  R_XL = 20
+
+# Prompt category colour map
 CAT_COLORS = {
     "dev":     (ACCENT, ACCENT_BG),
     "ship":    (GREEN,  GREEN_BG),
@@ -526,48 +537,67 @@ class ContentPanel(QWidget):
     # ── Project profile ───────────────────────────────────────────────────────
 
     def show_project(self, proj: dict):
-        w, lay = self._page()
+        w, lay = self._page(pad=SP3)
         git     = proj.get("git", {})
         session = proj.get("session", {})
         today   = git.get("today", [])
         mission = proj.get("mission", "")
 
-        # ── Name + meta row ──────────────────────────────────────────────────
-        hr = QHBoxLayout(); hr.setSpacing(10)
-        hr.addWidget(L(proj["name"], 28, TEXT1, bold=True), 1)
-        if git.get("branch"):
-            hr.addWidget(tag(f"  {git['branch']}", TEXT2, SURFACE))
-        if git.get("dirty"):
-            hr.addWidget(chip("  uncommitted", AMBER, AMBER_BG))
-        lay.addLayout(hr)
-        lay.addSpacing(8)
+        # ── Hero: name + status bar ───────────────────────────────────────────
+        hero = QWidget()
+        hero.setStyleSheet(f"background:{CARD}; border-radius:{R_LG}px;"
+                           f"border:1px solid {BORDER};")
+        hl = QVBoxLayout(hero); hl.setContentsMargins(SP3, SP2+4, SP3, SP2); hl.setSpacing(SP1)
 
-        # Stack + path
+        # Row 1: name + health chip
+        nr = QHBoxLayout(); nr.setSpacing(SP1+4)
+        name_lbl = L(proj["name"], 32, TEXT1, bold=True)
+        nr.addWidget(name_lbl, 1)
+        health = session.get("health","")
+        if health:
+            fg, bg = health_fg_bg(health)
+            nr.addWidget(chip(f"● {health.upper()}", fg, bg))
+        if git.get("dirty"):
+            nr.addWidget(chip("uncommitted", AMBER, AMBER_BG))
+        hl.addLayout(nr)
+
+        # Row 2: stack + branch
+        meta_row = QHBoxLayout(); meta_row.setSpacing(SP1)
         if proj.get("stack"):
-            sr = QHBoxLayout(); sr.setSpacing(6)
-            for t in proj["stack"]: sr.addWidget(tag(t, ACCENT, ACCENT_BG))
-            sr.addStretch(); lay.addLayout(sr); lay.addSpacing(6)
-        lay.addWidget(L(str(proj["path"]), 11, TEXT3, selectable=True))
-        lay.addSpacing(24)
+            for t in proj["stack"]: meta_row.addWidget(tag(t, ACCENT, ACCENT_BG))
+        if git.get("branch"):
+            meta_row.addWidget(tag(f"⎇  {git['branch']}", TEXT3, SURFACE2))
+        meta_row.addStretch()
+        hl.addLayout(meta_row)
+
+        # Row 3: path (selectable, muted)
+        hl.addWidget(L(str(proj["path"]), 11, TEXT3, selectable=True))
+        lay.addWidget(hero)
+        lay.addSpacing(SP2)
         lay.addWidget(divider())
-        lay.addSpacing(22)
+        lay.addSpacing(SP2+2)
 
         # ── MISSION ──────────────────────────────────────────────────────────
         mc = card(left_accent=CYAN)
-        ml = QVBoxLayout(mc); ml.setContentsMargins(18,14,18,14); ml.setSpacing(8)
+        ml = QVBoxLayout(mc); ml.setContentsMargins(SP2, SP2-2, SP2, SP2-2); ml.setSpacing(SP1)
         ml.addWidget(section_label("MISSION", CYAN))
         if mission:
             ml.addWidget(L(mission, 14, TEXT1, wrap=True, selectable=True))
         else:
-            ml.addWidget(L("No mission defined yet. Run 🎯 Mission alignment to create one.",
+            ml.addWidget(L("No mission defined yet — run 🎯 Mission alignment.",
                            13, TEXT2, italic=True, wrap=True))
+        # Session mission field (from last run of 'mission' prompt)
+        s_mission = session.get("mission","")
+        if s_mission and s_mission.lower() not in mission.lower():
+            ml.addWidget(divider(BORDER))
+            ml.addWidget(L(f"Value prop: {s_mission}", 12, CYAN, wrap=True, selectable=True))
         lay.addWidget(mc)
-        lay.addSpacing(18)
+        lay.addSpacing(SP2)
 
         # ── TODAY ────────────────────────────────────────────────────────────
         today_date = date.today().strftime("%A, %d %b")
         tc = card(left_accent=GREEN if today else BORDER2)
-        tl = QVBoxLayout(tc); tl.setContentsMargins(18,14,18,14); tl.setSpacing(10)
+        tl = QVBoxLayout(tc); tl.setContentsMargins(SP2, SP2-2, SP2, SP2-2); tl.setSpacing(SP1)
 
         # Header row
         th = QHBoxLayout()
@@ -613,7 +643,7 @@ class ContentPanel(QWidget):
             tl.addLayout(nrow)
 
         lay.addWidget(tc)
-        lay.addSpacing(18)
+        lay.addSpacing(SP2)
 
         # ── ENGINEERING HEALTH ────────────────────────────────────────────
         eng_fields = {k: session.get(k,"") for k in ('health','build','tests','todos')}
@@ -1164,7 +1194,15 @@ class Dashboard(QMainWindow):
 def main():
     os.environ.setdefault("DISPLAY", ":0")
     app = QApplication(sys.argv)
-    app.setApplicationName("Claude Projects")
+    app.setApplicationName("Dev Dashboard")
+
+    # Font stack — UI body text
+    for family in ("Inter", "Segoe UI", "Helvetica Neue", "SF Pro Text", "sans-serif"):
+        f = QFont(family, 13)
+        if f.exactMatch() or family == "sans-serif":
+            app.setFont(f)
+            break
+
     apply_palette(app)
     win = Dashboard()
     win.show(); win.raise_(); win.activateWindow()
