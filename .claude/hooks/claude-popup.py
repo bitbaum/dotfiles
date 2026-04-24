@@ -475,8 +475,10 @@ class ContinuePopup(BasePopup):
     def _cancel_countdown(self):
         if self._timer and self._timer.isActive():
             self._timer.stop()
+            # User is engaged — give them 5 minutes before auto-dismiss
+            self._resume_dismiss(300_000)
         if self._countdown_label:
-            self._countdown_label.setText("↵ Enter to send")
+            self._countdown_label.setText("↑ ↓ navigate  ·  1–6 quick-pick  ·  Esc dismiss")
 
     def _start_countdown(self):
         self._timer = QTimer(interval=1000)
@@ -903,10 +905,16 @@ class ContinuePopup(BasePopup):
             super().keyPressEvent(e)
 
     def _shift_focus(self, d: int):
+        self._cancel_countdown()          # navigating = user is engaged
         btns = self._action_btns
         f    = self.focusWidget()
         idx  = (btns.index(f) + d) % len(btns) if f in btns else 0
         btns[idx].setFocus()
+
+    def enterEvent(self, e):
+        """Mouse entered the popup — user is looking at it, cancel countdown."""
+        self._cancel_countdown()
+        super().enterEvent(e)
 
 
 # ── Confirm popup ─────────────────────────────────────────────────────────────

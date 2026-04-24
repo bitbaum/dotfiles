@@ -47,7 +47,8 @@ link .config/starship.toml
 link .config/zellij/config.kdl
 link .config/zellij/layouts/projects.kdl
 
-# Project mapping
+# Claude prompts + project mapping (SSOT — both must be in repo)
+link .config/claude-prompts.json
 link .config/claude-projects.conf
 
 # Editor

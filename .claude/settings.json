@@ -48,6 +48,6 @@
     ]
   },
   "autoUpdatesChannel": "stable",
-  "voiceEnabled": true,
-  "model": "sonnet"
+  "editorMode": "vim",
+  "voiceEnabled": true
 }
