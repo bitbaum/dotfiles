@@ -237,6 +237,11 @@ def load_projects():
                 out.append({"name": name, "path": path})
     return out
 
+SESSION_FIELDS = {
+    'done','next','in_progress','tests','todos','health',
+    'build','browser','ux','deploy','mission',
+}
+
 def load_session(name: str) -> dict:
     if not SESSIONS.exists(): return {}
     for f in SESSIONS.iterdir():
@@ -246,7 +251,7 @@ def load_session(name: str) -> dict:
                 if ':' in line:
                     k, _, v = line.partition(':')
                     k = k.strip().lower()
-                    if k in ('done','next','in_progress','tests','todos','health'):
+                    if k in SESSION_FIELDS:
                         parsed[k] = v.strip()
             parsed['_mtime'] = f.stat().st_mtime
             return parsed
@@ -610,24 +615,71 @@ class ContentPanel(QWidget):
         lay.addWidget(tc)
         lay.addSpacing(18)
 
-        # ── STATUS ───────────────────────────────────────────────────────────
-        health_val = session.get("health","")
-        tests_val  = session.get("tests","")
-        todos_val  = session.get("todos","")
-        if health_val or tests_val or todos_val:
-            sc = card()
-            sl = QHBoxLayout(sc); sl.setContentsMargins(18,12,18,12); sl.setSpacing(8)
-            if health_val:
-                fg, bg = health_fg_bg(health_val)
-                sl.addWidget(chip(f"● {health_val.upper()}", fg, bg))
-            if tests_val:
-                sl.addWidget(chip(f"🧪 {tests_val}", TEXT2, SURFACE2))
-            if todos_val:
-                fg2 = GREEN if todos_val == "0" else AMBER
-                bg2 = GREEN_BG if todos_val == "0" else AMBER_BG
-                sl.addWidget(chip(f"📝 {todos_val} TODOs", fg2, bg2))
-            sl.addStretch()
-            lay.addWidget(sc)
+        # ── ENGINEERING HEALTH ────────────────────────────────────────────
+        eng_fields = {k: session.get(k,"") for k in ('health','build','tests','todos')}
+        if any(eng_fields.values()):
+            ec = card(left_accent=ACCENT)
+            el = QVBoxLayout(ec); el.setContentsMargins(18,14,18,14); el.setSpacing(10)
+            el.addWidget(section_label("ENGINEERING HEALTH", ACCENT))
+            chips_row = QHBoxLayout(); chips_row.setSpacing(8)
+            if eng_fields['health']:
+                fg, bg = health_fg_bg(eng_fields['health'])
+                chips_row.addWidget(chip(f"● {eng_fields['health'].upper()}", fg, bg))
+            if eng_fields['build']:
+                bc = eng_fields['build']
+                b_ok = "clean" in bc.lower() or "0" in bc
+                chips_row.addWidget(chip(f"🔨 {bc}", GREEN if b_ok else RED,
+                                         GREEN_BG if b_ok else RED_BG))
+            if eng_fields['tests']:
+                tc2 = eng_fields['tests']
+                t_ok = "fail" not in tc2.lower()
+                chips_row.addWidget(chip(f"🧪 {tc2}", GREEN if t_ok else RED,
+                                          GREEN_BG if t_ok else RED_BG))
+            if eng_fields['todos']:
+                td = eng_fields['todos']
+                t_zero = td.startswith("0")
+                chips_row.addWidget(chip(f"📝 {td} TODOs", GREEN if t_zero else AMBER,
+                                          GREEN_BG if t_zero else AMBER_BG))
+            chips_row.addStretch()
+            el.addLayout(chips_row)
+            lay.addWidget(ec)
+            lay.addSpacing(18)
+
+        # ── UX & TESTING ──────────────────────────────────────────────────
+        ux_val      = session.get("ux","")
+        browser_val = session.get("browser","")
+        if ux_val or browser_val:
+            uc = card(left_accent=PURPLE)
+            ul = QVBoxLayout(uc); ul.setContentsMargins(18,14,18,14); ul.setSpacing(10)
+            ul.addWidget(section_label("UX & TESTING", PURPLE))
+            if browser_val:
+                br2 = QHBoxLayout(); br2.setSpacing(10)
+                b_ok = "fail" not in browser_val.lower() and "untested" not in browser_val.lower()
+                br2.addWidget(chip("🌐 Browser", PURPLE, PURPLE_BG, size=10))
+                br2.addWidget(L(browser_val, 13, TEXT1 if b_ok else AMBER,
+                                  wrap=True, selectable=True), 1)
+                ul.addLayout(br2)
+            if ux_val:
+                ur = QHBoxLayout(); ur.setSpacing(10)
+                ur.addWidget(chip("🎨 UX", PURPLE, PURPLE_BG, size=10))
+                ur.addWidget(L(ux_val, 13, TEXT1, wrap=True, selectable=True), 1)
+                ul.addLayout(ur)
+            lay.addWidget(uc)
+            lay.addSpacing(18)
+
+        # ── DEPLOY STATUS ─────────────────────────────────────────────────
+        deploy_val = session.get("deploy","")
+        if deploy_val:
+            dc = card(left_accent=GREEN)
+            dl2 = QVBoxLayout(dc); dl2.setContentsMargins(18,12,18,12); dl2.setSpacing(8)
+            dl2.addWidget(section_label("LAST DEPLOY", GREEN))
+            dr = QHBoxLayout(); dr.setSpacing(10)
+            d_ok = "ready" in deploy_val.lower()
+            dr.addWidget(chip("🚀 Deploy", GREEN if d_ok else RED,
+                               GREEN_BG if d_ok else RED_BG, size=10))
+            dr.addWidget(L(deploy_val, 13, TEXT1, wrap=True, selectable=True), 1)
+            dl2.addLayout(dr)
+            lay.addWidget(dc)
             lay.addSpacing(18)
 
         # ── OLDER HISTORY (if session not from today) ─────────────────────
@@ -644,8 +696,8 @@ class ContentPanel(QWidget):
                 for key, dot, clr in [("done","✓",GREEN),("in_progress","⋯",AMBER)]:
                     if key not in session: continue
                     row = QHBoxLayout(); row.setSpacing(10)
-                    dl2 = L(dot, 14, clr, bold=True); dl2.setFixedWidth(18)
-                    row.addWidget(dl2)
+                    dl3 = L(dot, 14, clr, bold=True); dl3.setFixedWidth(18)
+                    row.addWidget(dl3)
                     row.addWidget(L(session[key], 13, TEXT1, wrap=True, selectable=True), 1)
                     hl2.addLayout(row)
                 lay.addWidget(hc)
@@ -796,6 +848,25 @@ class ContentPanel(QWidget):
             when = git.get("when","")
             ol.addWidget(L(f"Last commit {when}" if when else "No recent activity",
                            11, TEXT3, italic=True))
+
+        # ── Engineering chips (build / browser / deploy) ──
+        eng_chips = []
+        build_v   = session.get("build","")
+        browser_v = session.get("browser","")
+        deploy_v  = session.get("deploy","")
+        if build_v:
+            ok = "clean" in build_v.lower() or build_v.startswith("0")
+            eng_chips.append((f"🔨 {build_v[:30]}", GREEN if ok else RED, GREEN_BG if ok else RED_BG))
+        if browser_v:
+            ok = "fail" not in browser_v.lower() and "untested" not in browser_v.lower()
+            eng_chips.append((f"🌐 {browser_v[:30]}", PURPLE if ok else AMBER, PURPLE_BG if ok else AMBER_BG))
+        if deploy_v:
+            ok = "ready" in deploy_v.lower()
+            eng_chips.append((f"🚀 {deploy_v[:30]}", GREEN if ok else RED, GREEN_BG if ok else RED_BG))
+        if eng_chips:
+            er = QHBoxLayout(); er.setSpacing(5)
+            for txt, fg, bg in eng_chips: er.addWidget(chip(txt, fg, bg, size=10))
+            er.addStretch(); ol.addLayout(er)
 
         # ── Next action ──
         if nxt:

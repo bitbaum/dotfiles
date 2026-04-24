@@ -54,16 +54,44 @@ else
   BASE=$(get_prompt "$KEY")
   [ -z "$BASE" ] && log "prompt not found for key=$KEY" && exit 0
 
-  # Wrap with session context if available
+  # ── Gather ground-truth context ─────────────────────────────────────────────
+  GIT_CTX=""
+  if [ -d "${CWD}/.git" ]; then
+    GIT_BRANCH=$(git -C "$CWD" branch --show-current 2>/dev/null)
+    GIT_STATUS=$(git -C "$CWD" status --short 2>/dev/null | head -8)
+    GIT_LOG=$(git -C "$CWD" log --oneline -5 2>/dev/null)
+    GIT_AHEAD=$(git -C "$CWD" rev-list --count @{upstream}..HEAD 2>/dev/null || echo "")
+
+    GIT_CTX="Git context:
+branch: ${GIT_BRANCH}$([ -n "$GIT_AHEAD" ] && echo " ($GIT_AHEAD ahead of origin)")"
+    [ -n "$GIT_STATUS" ] && GIT_CTX="${GIT_CTX}
+uncommitted:
+${GIT_STATUS}"
+    GIT_CTX="${GIT_CTX}
+recent commits:
+${GIT_LOG}"
+  fi
+
+  # ── Wrap with session + git context ─────────────────────────────────────────
   if [ -n "$TAB_NAME" ] && [ -f "$SESSION_FILE" ]; then
     SESSION=$(cat "$SESSION_FILE")
-    PROMPT=$(printf '%s\n\nSession state from last run:\n%s\n\nUpdate %s when done: what you completed and what remains.' \
-      "$BASE" "$SESSION" "$SESSION_FILE")
-    log "injecting with session context from $SESSION_FILE"
+    if [ -n "$GIT_CTX" ]; then
+      PROMPT=$(printf '%s\n\nProject: %s\n%s\n\nSession state from last run:\n%s\n\nUpdate %s when done.' \
+        "$BASE" "$LABEL" "$GIT_CTX" "$SESSION" "$SESSION_FILE")
+    else
+      PROMPT=$(printf '%s\n\nProject: %s\nSession state from last run:\n%s\n\nUpdate %s when done.' \
+        "$BASE" "$LABEL" "$SESSION" "$SESSION_FILE")
+    fi
+    log "injecting with session + git context"
   else
     # No session file yet — ask Claude to create one
-    PROMPT=$(printf '%s\n\nBefore stopping, create %s with two lines: "done: <what you completed>" and "next: <what remains>".' \
-      "$BASE" "$HOME/.claude/sessions/${TAB_NAME}.md")
+    if [ -n "$GIT_CTX" ]; then
+      PROMPT=$(printf '%s\n\nProject: %s\n%s\n\nCreate %s when done with: done/next/tests/todos/health lines.' \
+        "$BASE" "$LABEL" "$GIT_CTX" "$HOME/.claude/sessions/${TAB_NAME}.md")
+    else
+      PROMPT=$(printf '%s\n\nProject: %s\nCreate %s when done with: done/next/tests/todos/health lines.' \
+        "$BASE" "$LABEL" "$HOME/.claude/sessions/${TAB_NAME}.md")
+    fi
     log "injecting without session context (no file yet)"
   fi
 fi
