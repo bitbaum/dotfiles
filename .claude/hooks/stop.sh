@@ -14,6 +14,25 @@ resolve_tab "$CWD"
 LABEL="${TAB_NAME:-$(basename "$CWD")}"
 log "fired — label=$LABEL"
 
+# clear current-prompt tracking — Claude just finished whatever it was doing
+rm -f "/tmp/claude-current-prompt-${TAB_NAME:-default}"
+
+# close_session sentinel means: "don't show popup; mark session as closed"
+SENTINEL="/tmp/claude-session-closed-${TAB_NAME:-default}"
+if [ -f "$SENTINEL" ]; then
+  log "close-session sentinel found — writing closed file and exiting without popup"
+  rm -f "$SENTINEL"
+  # Write closed timestamp (Claude actually finished the close_session prompt now)
+  echo "$(date +%s)" > "/tmp/claude-closed-${TAB_NAME:-default}"
+  rm -f "/tmp/claude-ready-${TAB_NAME:-default}"
+  rm -f "/tmp/claude-closing-${TAB_NAME:-default}"
+  exit 0
+fi
+
+# Signal to Cockpit /control that this project just finished (phone remote control)
+READY="/tmp/claude-ready-${TAB_NAME:-default}"
+echo "$(date +%s)" > "$READY"
+
 # Block notification.sh from auto-injecting while this popup is open
 LOCK="/tmp/claude-stop-active-${TAB_NAME:-default}"
 touch "$LOCK"
@@ -35,63 +54,33 @@ if [[ "$CHOICE" == custom:* ]]; then
   PROMPT="${CHOICE#custom:}"
   log "using custom prompt"
 else
-  case "$CHOICE" in
-    1)  KEY="next_best"    ;;  # core
-    2)  KEY="test_and_fix" ;;  # core
-    3)  KEY="commit_push"  ;;  # core
-    4)  KEY="quality"      ;;  # core
-    5)  KEY="full_audit"   ;;  # core
-    6)  KEY="mission"      ;;  # core
-    7)  KEY="browser_test" ;;  # more
-    8)  KEY="deploy_check" ;;  # more
-    9)  KEY="product"      ;;  # more
-    10) KEY="ux_review"    ;;  # more
-    11) KEY="marketing"    ;;  # more
-    12) KEY="social"       ;;  # more
-    *)  exit 0 ;;
-  esac
+  # Look up prompt key from slot number — SSOT is claude-prompts-meta.json
+  _META="${CLAUDE_PROMPTS_META:-$HOME/.config/claude-prompts-meta.json}"
+  KEY=$(jq -r --argjson slot "$CHOICE" '.[] | select(.slot == $slot) | .key' "$_META" 2>/dev/null)
+  [ -z "$KEY" ] && log "no key for slot=$CHOICE" && exit 0
 
   BASE=$(get_prompt "$KEY")
   [ -z "$BASE" ] && log "prompt not found for key=$KEY" && exit 0
 
-  # ── Gather ground-truth context ─────────────────────────────────────────────
-  GIT_CTX=""
-  if [ -d "${CWD}/.git" ]; then
-    GIT_BRANCH=$(git -C "$CWD" branch --show-current 2>/dev/null)
-    GIT_STATUS=$(git -C "$CWD" status --short 2>/dev/null | head -8)
-    GIT_LOG=$(git -C "$CWD" log --oneline -5 2>/dev/null)
-    GIT_AHEAD=$(git -C "$CWD" rev-list --count @{upstream}..HEAD 2>/dev/null || echo "")
-
-    GIT_CTX="Git context:
-branch: ${GIT_BRANCH}$([ -n "$GIT_AHEAD" ] && echo " ($GIT_AHEAD ahead of origin)")"
-    [ -n "$GIT_STATUS" ] && GIT_CTX="${GIT_CTX}
-uncommitted:
-${GIT_STATUS}"
-    GIT_CTX="${GIT_CTX}
-recent commits:
-${GIT_LOG}"
+  # close_session means "stop here" — write sentinel now so the NEXT stop hook
+  # (after Claude finishes the close_session prompt) skips the popup and writes closed file.
+  if [ "$KEY" = "close_session" ] && [ -n "$TAB_NAME" ]; then
+    touch "/tmp/claude-session-closed-${TAB_NAME}"
+    echo "$(date +%s)" > "/tmp/claude-closing-${TAB_NAME}"
+    rm -f "/tmp/claude-ready-${TAB_NAME}"
+    log "close_session chosen — sentinel + closing file written; closed file deferred to next stop"
   fi
 
-  # ── Wrap with session + git context ─────────────────────────────────────────
+  # Wrap with session context if available
   if [ -n "$TAB_NAME" ] && [ -f "$SESSION_FILE" ]; then
     SESSION=$(cat "$SESSION_FILE")
-    if [ -n "$GIT_CTX" ]; then
-      PROMPT=$(printf '%s\n\nProject: %s\n%s\n\nSession state from last run:\n%s\n\nUpdate %s when done.' \
-        "$BASE" "$LABEL" "$GIT_CTX" "$SESSION" "$SESSION_FILE")
-    else
-      PROMPT=$(printf '%s\n\nProject: %s\nSession state from last run:\n%s\n\nUpdate %s when done.' \
-        "$BASE" "$LABEL" "$SESSION" "$SESSION_FILE")
-    fi
-    log "injecting with session + git context"
+    PROMPT=$(printf '%s\n\nSession state from last run:\n%s\n\nUpdate %s when done: what you completed and what remains.' \
+      "$BASE" "$SESSION" "$SESSION_FILE")
+    log "injecting with session context from $SESSION_FILE"
   else
     # No session file yet — ask Claude to create one
-    if [ -n "$GIT_CTX" ]; then
-      PROMPT=$(printf '%s\n\nProject: %s\n%s\n\nCreate %s when done with: done/next/tests/todos/health lines.' \
-        "$BASE" "$LABEL" "$GIT_CTX" "$HOME/.claude/sessions/${TAB_NAME}.md")
-    else
-      PROMPT=$(printf '%s\n\nProject: %s\nCreate %s when done with: done/next/tests/todos/health lines.' \
-        "$BASE" "$LABEL" "$HOME/.claude/sessions/${TAB_NAME}.md")
-    fi
+    PROMPT=$(printf '%s\n\nBefore stopping, create %s with two lines: "done: <what you completed>" and "next: <what remains>".' \
+      "$BASE" "$HOME/.claude/sessions/${TAB_NAME}.md")
     log "injecting without session context (no file yet)"
   fi
 fi
