@@ -25,12 +25,18 @@ resolve_tab() {
     local rdir
     rdir=$(realpath "$dir" 2>/dev/null) || continue
     if [ "$rdir" = "$cwd" ]; then
-      # Find the real tab name with case-insensitive lookup
+      # Find the real tab name — exact match first, then starts-with
+      # (handles renamed tabs like "cockpit" → "cockpit openclaw")
       local tab_lower="${tab,,}"
       local actual
       actual=$(printf '%s\n' "$actual_tabs" | while IFS= read -r t; do
         [ "${t,,}" = "$tab_lower" ] && printf '%s' "$t" && break
       done)
+      if [ -z "$actual" ]; then
+        actual=$(printf '%s\n' "$actual_tabs" | while IFS= read -r t; do
+          [[ "${t,,}" == "${tab_lower} "* ]] && printf '%s' "$t" && break
+        done)
+      fi
       TAB_NAME="${actual:-$tab}"
       return
     fi
