@@ -24,14 +24,15 @@ if [ "$TOOL_NAME" = "Bash" ]; then
   DANGEROUS_PATTERN='(rm\s+-[rRfF]{1,3}\b|git\s+(push\s+[^|&;]*(-f|--force)|reset\s+--hard|clean\s+-[fdxX])|DROP\s+(TABLE|DATABASE|SCHEMA)|TRUNCATE\s+TABLE|dd\s+if=|mkfs\b|:\(\)\{.*\}|chmod\s+-R\s+777)'
 
   if echo "$COMMAND" | grep -qEi "$DANGEROUS_PATTERN"; then
-    DISPLAY=:0 DBUS_SESSION_BUS_ADDRESS=unix:path=/run/user/1000/bus \
+    _DBUS="unix:path=/run/user/$(id -u)/bus"
+    DISPLAY=:0 DBUS_SESSION_BUS_ADDRESS="$_DBUS" \
       paplay /usr/share/sounds/freedesktop/stereo/dialog-warning.oga 2>/dev/null &
 
     # Write command to temp file so Python receives it safely (no quoting issues)
     TMPFILE=$(mktemp /tmp/claude-confirm-XXXXXX)
     echo "$COMMAND" > "$TMPFILE"
 
-    CHOICE=$(DISPLAY=:0 DBUS_SESSION_BUS_ADDRESS=unix:path=/run/user/1000/bus \
+    CHOICE=$(DISPLAY=:0 DBUS_SESSION_BUS_ADDRESS="$_DBUS" \
       python3 ~/.claude/hooks/claude-popup.py confirm "Bash" "$TMPFILE" 2>/dev/null)
     rm -f "$TMPFILE"
 

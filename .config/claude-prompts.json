@@ -1,27 +1,128 @@
-{
-  "next_best": "Continue working on this project. Follow CLAUDE.md.\n\nStep 0 — orient (run these first, read the output):\n  git status && git log --oneline -5\n\nStep 1 — pick the highest-impact task by scanning in order:\n  (1) interrupted/uncommitted work to resume\n  (2) failing tests, broken builds, or type errors\n  (3) SSOT/DRY/quality violations flagged in code or session\n  (4) mission alignment — are we building the right things?\n\nStep 2 — execute it fully. No questions, no scope creep, no partial work.\n\nStep 3 — verify before marking done:\n  • Run type checker if one exists: tsc --noEmit OR mypy OR cargo check\n  • Run tests if suite exists: npm test OR pytest OR cargo test\n  • Count TODOs: grep -rn 'TODO\\|FIXME\\|HACK' --include='*.ts' --include='*.tsx' --include='*.py' --include='*.go' | wc -l\n  • Check git status — are changes committed or intentionally staged?\n\nStep 4 — update the session file with VERIFIED data (not guesses):\ndone: <one sentence>\nnext: <one sentence>\ntests: <run them — N pass · N fail, or 'no suite'>\ntodos: <actual grep count> TODOs\nhealth: <good | needs attention | critical>\nbuild: <clean | N type errors | skipped — no checker found>",
-
-  "test_and_fix": "Run the full test suite and fix every failure. Follow CLAUDE.md.\n\nStep 1 — detect and run the test suite:\n  Try in order: npm test, pytest, cargo test, go test ./...\n  If none found: write tests for the 2 most critical untested paths.\n\nStep 2 — for each failure: read the error, find the root cause, fix it. Never mock away a real problem.\n\nStep 3 — start the dev server and use browser automation (mcp__playwright or mcp__claude-in-chrome) to walk primary user flows. Check browser console for errors. Fix every bug found.\n\nStep 4 — run type checker to zero errors: tsc --noEmit OR mypy OR cargo check.\n\nStep 5 — update session file:\ndone: <what you fixed>\nnext: <what remains>\ntests: <N pass · N fail>\ntodos: <grep count> TODOs\nhealth: <good | needs attention | critical>\nbuild: <clean | N type errors>\nbrowser: <N/M flows passing | untested>",
-
-  "browser_test": "Test this application in a real browser using mcp__playwright or mcp__claude-in-chrome tools.\n\nStep 1 — start the dev server if not running.\n\nStep 2 — test each primary user flow systematically:\n  • App loads without console errors\n  • Primary create/read/update/delete flows\n  • Authentication flow (if applicable)\n  • Mobile viewport at 375px width\n  • Empty states and error states\n  Read browser console after each flow — fix every error.\n\nStep 3 — fix every bug found before moving on.\n\nStep 4 — update session file:\ndone: <what you tested and fixed>\nnext: <remaining issues or untested flows>\ntests: <N pass · N fail>\ntodos: <grep count> TODOs\nhealth: <good | needs attention | critical>\nbrowser: <N/M flows passing — list any failures>",
-
-  "quality": "Code health pass — raise the bar, no new features. Follow CLAUDE.md.\n\nStep 1 — run automated checks:\n  • Type checker: tsc --noEmit OR mypy OR cargo check\n  • Linter: npm run lint OR flake8 OR clippy\n  • Count TODOs: grep -rn 'TODO\\|FIXME\\|HACK' src/ (or equivalent)\n\nStep 2 — fix all type/lint errors.\n\nStep 3 — search for and fix:\n  • DRY violations (same logic in 2+ places → extract)\n  • SSOT gaps (same data defined in multiple files → centralize)\n  • Magic numbers/strings → constants\n  • Copy-paste code blocks → shared utilities\n  • TODO debt older than 2 sessions → resolve or delete\n  • Files over 300 lines → split if they have multiple concerns\n\nStep 4 — update session file:\ndone: <what you cleaned up>\nnext: <remaining debt>\ntests: <N pass · N fail>\ntodos: <actual grep count> TODOs\nhealth: <good | needs attention | critical>\nbuild: <clean | N errors after your fixes>",
-
-  "commit_push": "Prepare and ship today's work. Follow CLAUDE.md.\n\nStep 1 — verify (must pass before committing):\n  • Type check: tsc --noEmit OR equivalent — zero errors required\n  • Tests: must pass\n  • No console.log in production paths\n  • No hardcoded secrets or API keys\n\nStep 2 — review changes:\n  git diff && git status\n  Stage only intentional changes.\n\nStep 3 — commit with conventional format:\n  <type>(<scope>): <description that explains WHY>\n  Types: feat, fix, refactor, perf, test, docs, chore\n\nStep 4 — push to origin.\n\nStep 5 — if Vercel project, monitor deployment until Ready:\n  vercel ls --prod (poll until status = Ready or Error)\n  If Error: run vercel logs <url>, fix, push again.\n\nStep 6 — update session file:\ndone: committed and pushed — <commit message>\nnext: <next priority>\ntests: <N pass · N fail>\ntodos: <grep count> TODOs\nhealth: <good | needs attention | critical>\nbuild: <clean | N errors>\ndeploy: <https://... Ready | local only>",
-
-  "deploy_check": "Full pre-deploy verification. Fix every issue found. Follow CLAUDE.md.\n\nRun each check and report pass/fail:\n  (1) Type check — tsc --noEmit or equivalent: ZERO errors\n  (2) Build — npm run build or equivalent: must complete without error\n  (3) Tests — all passing\n  (4) No console.log or debug code in production paths\n  (5) No hardcoded secrets, API keys, or credentials (grep for common patterns)\n  (6) All user-facing API routes have input validation\n  (7) No incomplete features without proper guards/feature flags\n  (8) Security: SQL injection, XSS, auth bypass — check critical paths\n  (9) Performance: no N+1 queries, no blocking operations on main thread\n\nFix every failure. Only when ALL 9 checks pass: commit, push, monitor deployment.\n\nUpdate session file:\ndone: <pre-deploy checks result + deployed if clean>\nnext: <any items that need attention post-deploy>\ntests: <N pass · N fail>\ntodos: <grep count> TODOs\nhealth: <good | needs attention | critical>\nbuild: <clean | N errors>\ndeploy: <https://... Ready | failed — see logs>",
-
-  "full_audit": "Comprehensive project audit. Follow CLAUDE.md.\n\nPhase 1 — gather hard data (run all of these):\n  • git log --oneline -20 (what shipped recently?)\n  • git status (uncommitted work?)\n  • tsc --noEmit OR equivalent (type errors?)\n  • npm test OR pytest OR equivalent (test health?)\n  • grep -rn 'TODO\\|FIXME\\|HACK' src/ | wc -l (debt count?)\n  • wc -l $(find src -name '*.ts' -o -name '*.tsx' -o -name '*.py' 2>/dev/null) | sort -rn | head -10 (largest files)\n\nPhase 2 — audit dimensions:\n  • Architecture: are concerns properly separated? Any god files/components?\n  • SSOT: is any data defined in multiple places?\n  • DRY: any obvious copy-paste?\n  • Security: any obvious vulnerabilities at system boundaries?\n  • Missing tests: what critical paths have no coverage?\n  • Mission drift: do recent commits match the stated purpose?\n\nPhase 3 — write a priority list (5 items, by user impact).\n\nPhase 4 — execute the single highest-priority item fully.\n\nUpdate session file:\ndone: <what you fixed>\nnext: <top remaining item from priority list>\ntests: <N pass · N fail>\ntodos: <actual grep count> TODOs\nhealth: <good | needs attention | critical>\nbuild: <clean | N type errors>",
-
-  "mission": "Define and align the project mission. Follow CLAUDE.md.\n\nStep 1 — read CLAUDE.md (if exists) and extract the stated mission.\n  If no mission: draft one — answer these 3 questions in 2 sentences:\n    Who is the actual user? What problem do they have? What does success look like?\n  Prepend to CLAUDE.md under a '## Mission' heading.\n\nStep 2 — audit last 10 commits: git log --oneline -10\n  Are we building the right things?\n  Is anything over-engineered, gold-plated, or solving a problem nobody has?\n  Is anything critically missing for the user to get value?\n\nStep 3 — fix the single biggest misalignment.\n\nStep 4 — write a one-line value proposition (outcome-focused, no jargon, under 12 words).\n\nUpdate session file:\ndone: <what you realigned or defined>\nnext: <next misalignment to address>\ntests: <N pass · N fail>\ntodos: <grep count> TODOs\nhealth: <good | needs attention | critical>\nmission: <one-line value proposition you wrote>",
-
-  "product": "Think as a product manager. Follow CLAUDE.md.\n\nStep 1 — gather context:\n  • Read CLAUDE.md for stated mission\n  • git log --oneline -10 (what was built recently?)\n  • Check if there's a MARKETING.md or README with value proposition\n\nStep 2 — answer these 4 questions honestly:\n  (1) Who is the actual user and what is their single biggest pain point RIGHT NOW?\n  (2) What is the most confusing part of the current UX — would a new user understand in 30 seconds?\n  (3) What one feature would have the highest impact if shipped this week?\n  (4) What should be CUT — features that add complexity without proportional user value?\n\nStep 3 — produce a prioritized list of 5 improvements with user-impact rationale.\n\nStep 4 — execute the single highest-impact UX fix.\n\nUpdate session file:\ndone: <product insight + fix applied>\nnext: <next highest-impact improvement>\ntests: <N pass · N fail>\ntodos: <grep count> TODOs\nhealth: <good | needs attention | critical>\nux: <key finding — one sentence>",
-
-  "ux_review": "Review the UI/UX as a demanding but fair user. Follow CLAUDE.md.\n\nStep 1 — start dev server and open in browser (use mcp__playwright or mcp__claude-in-chrome).\n\nStep 2 — systematically check each dimension and RECORD specific file:line issues:\n  Typography: all text ≥14px? No gray-on-gray? Readable everywhere?\n  Interactivity: buttons/links/inputs obviously clickable? Hover states?\n  Mobile: 375px viewport — does it work? Tap targets ≥44px?\n  Empty states: what does the user see with no data? Is there a helpful message?\n  Loading states: are async operations shown clearly?\n  Error states: are error messages helpful and actionable (not 'Something went wrong')?\n  Visual hierarchy: is the most important action the most prominent element?\n  Consistency: same patterns used for same things throughout?\n\nStep 3 — fix the top 3 issues found. Reference file:line for each fix.\n\nStep 4 — update session file:\ndone: <UX issues found and fixed>\nnext: <remaining UX issues>\ntests: <flows passing in browser>\ntodos: <grep count> TODOs\nhealth: <good | needs attention | critical>\nbrowser: <N/M flows tested — key findings>\nux: <summary: N issues found, M fixed — worst remaining issue>",
-
-  "marketing": "Write compelling marketing copy. Follow CLAUDE.md.\n\nStep 1 — read CLAUDE.md mission section and recent git log for what was built.\n\nStep 2 — create all of the following (save to MARKETING.md):\n  (1) One-line value proposition — under 12 words, outcome-focused, no jargon\n      Example: 'Ship better software faster without breaking things'\n  (2) Three-sentence elevator pitch — problem → solution → why this one\n  (3) Three feature bullets — written as user benefits ('You can...' not 'It has...')\n  (4) One call-to-action line\n  (5) Three potential objections and honest answers\n  (6) Target user persona — 2 sentences: who they are, what they struggle with\n\nStep 3 — review: would a skeptical stranger be convinced?\n  Cut jargon. Focus on outcomes. Make it human.\n\nUpdate session file:\ndone: wrote marketing copy to MARKETING.md\nnext: review copy with fresh eyes and refine the weakest section\ntests: n/a\ntodos: 0\nhealth: good\nmission: <the one-line value proposition you wrote>",
-
-  "social": "Write authentic social media content based on recent work. Follow CLAUDE.md.\n\nStep 1 — check git log for the last week: git log --since='7 days ago' --oneline\n  Identify the most concrete, impressive, or interesting thing that shipped.\n\nStep 2 — write the following (save to SOCIAL.md):\n  (1) Twitter/X post — under 280 chars\n      Show something CONCRETE (a feature, a metric, a before/after)\n      One relevant hashtag. No hype words ('revolutionary', 'game-changing').\n  (2) LinkedIn post — 3 paragraphs:\n      Para 1: the problem that existed\n      Para 2: what was built and how\n      Para 3: what you learned or what it enables\n      Conversational, no buzzwords, authentic.\n  (3) Demo script — 3 bullet points for a 30-second screen recording\n      Each bullet: what to show, what to say\n\nUpdate session file:\ndone: wrote social content to SOCIAL.md\nnext: record demo video using the script\ntests: n/a\ntodos: 0\nhealth: good",
-
-  "continue": "Resolve the pending question using available context and keep going. Follow CLAUDE.md. Do not stop to ask again. When done, update the session file with done/next/tests/todos/health lines."
-}
+[
+  {
+    "key": "next_best",
+    "slot": 1,
+    "icon": "⚡",
+    "label": "Next best task",
+    "style": "primary",
+    "category": "dev",
+    "prompt": "Continue working on this project. Follow CLAUDE.md. Before picking the next task, scan in order: (1) interrupted/uncommitted work to resume, (2) failing tests or broken flows, (3) SSOT/DRY/quality violations, (4) mission alignment. Pick whichever is highest user impact and execute it fully. No questions, no scope creep. When done, update the session file with exactly these lines:\ndone: <one sentence what you completed>\nnext: <one sentence what remains>\ntests: <N pass · N fail, or 'no suite'>\ntodos: <count> TODOs\nhealth: <good | needs attention | critical>"
+  },
+  {
+    "key": "test_and_fix",
+    "slot": 2,
+    "icon": "🧪",
+    "label": "Test & fix",
+    "style": "action",
+    "category": "dev",
+    "prompt": "Run the full test suite and fix every failure. Then start the dev server and use browser automation to walk the primary user flows — find what is visually broken or functionally wrong and fix it. If all tests pass and flows work, write tests for the most critical untested paths. Follow CLAUDE.md throughout. When done, update the session file:\ndone: <what you fixed>\nnext: <what remains>\ntests: <N pass · N fail>\ntodos: <count> TODOs\nhealth: <good | needs attention | critical>"
+  },
+  {
+    "key": "commit_push",
+    "slot": 3,
+    "icon": "📦",
+    "label": "Commit & push",
+    "style": "action",
+    "category": "ship",
+    "prompt": "Prepare and ship today's work. Step 1 — verify: run type check and any tests; they must pass. Step 2 — review: check git diff and git status; confirm only intended changes are staged. Step 3 — commit: write a conventional commit message (<type>(<scope>): <description>) that explains WHY, not just what. Step 4 — push to origin. Step 5 — if this is a Vercel project, monitor the deployment until it shows Ready. Report the final git log line and deployment URL. When done, update the session file:\ndone: committed and pushed — <commit message>\nnext: <next priority>\ntests: <N pass · N fail>\ntodos: <count> TODOs\nhealth: <good | needs attention | critical>"
+  },
+  {
+    "key": "quality",
+    "slot": 4,
+    "icon": "💎",
+    "label": "Code quality pass",
+    "style": "action",
+    "category": "dev",
+    "prompt": "Code health pass. Run linter and type checker to zero warnings. Find and fix: DRY violations, SSOT gaps, magic numbers, hardcoded strings, copy-paste code, TODO debt. No new features — only raise the bar on existing code. Follow CLAUDE.md. When done, update the session file:\ndone: <what you cleaned up>\nnext: <remaining debt>\ntests: <N pass · N fail>\ntodos: <count> TODOs\nhealth: <good | needs attention | critical>"
+  },
+  {
+    "key": "full_audit",
+    "slot": 5,
+    "icon": "🔍",
+    "label": "Full audit + plan",
+    "style": "action",
+    "category": "ship",
+    "prompt": "Comprehensive audit: run tests, check types, count TODOs, list incomplete features, identify tech debt and architectural gaps. Write a priority list by user impact. Execute the single highest-priority item fully. Follow CLAUDE.md. No speculative work. When done, update the session file:\ndone: <what you fixed>\nnext: <top remaining item from your priority list>\ntests: <N pass · N fail>\ntodos: <count> TODOs\nhealth: <good | needs attention | critical>"
+  },
+  {
+    "key": "mission",
+    "slot": 6,
+    "icon": "🎯",
+    "label": "Mission alignment",
+    "style": "action",
+    "category": "vision",
+    "prompt": "Read CLAUDE.md and extract or infer the project mission: who is the user, what problem does this solve, what does success look like. If no mission is explicitly written, draft one in 2 sentences and prepend it to CLAUDE.md under a '## Mission' heading. Then audit the last 10 commits and current codebase: are we building the right things? Is anything over-engineered, gold-plated, or missing entirely? Fix the single biggest misalignment. When done, update the session file:\ndone: <what you realigned or defined>\nnext: <next misalignment to address>\ntests: <N pass · N fail>\ntodos: <count> TODOs\nhealth: <good | needs attention | critical>"
+  },
+  {
+    "key": "browser_test",
+    "slot": 7,
+    "icon": "🌐",
+    "label": "Browser test",
+    "style": "more",
+    "category": "dev",
+    "prompt": "Use the browser automation tools (mcp__playwright or mcp__claude-in-chrome) to test this application in a real browser. Navigate to the running dev server. Test all primary user flows one by one: open the app, verify it loads without errors, walk the critical paths (create, read, update, delete where applicable), check mobile viewport (375px width), and read the browser console for errors. Fix every bug you find. Report what passed, what was broken, and what you fixed. When done, update the session file:\ndone: <what you tested and fixed>\nnext: <remaining issues or untested flows>\ntests: <flows tested / flows passing>\ntodos: <count> TODOs\nhealth: <good | needs attention | critical>"
+  },
+  {
+    "key": "deploy_check",
+    "slot": 8,
+    "icon": "✅",
+    "label": "Deploy checklist",
+    "style": "more",
+    "category": "ship",
+    "prompt": "Full pre-deploy verification. Run each check and report pass/fail: (1) Type check — zero errors (tsc --noEmit or equivalent), (2) Build — must complete without error (npm run build or equivalent), (3) Tests — all passing, (4) No console.log or debug code in production paths, (5) No hardcoded secrets, API keys, or credentials, (6) All user-facing API routes have input validation, (7) No incomplete features behind missing guards, (8) Check for obvious security issues (SQL injection, XSS, auth bypass). Fix every failure. Only when ALL checks pass: commit, push, and monitor deployment to completion. When done, update the session file:\ndone: <pre-deploy checks result + deployed if clean>\nnext: <any items that need attention post-deploy>\ntests: <N pass · N fail>\ntodos: <count> TODOs\nhealth: <good | needs attention | critical>"
+  },
+  {
+    "key": "product",
+    "slot": 9,
+    "icon": "🏗",
+    "label": "Product thinking",
+    "style": "more",
+    "category": "vision",
+    "prompt": "Step back from the code and think as a product manager. Review what exists and ask: (1) Who is the actual user and what is their single biggest pain point right now? (2) What is the most confusing part of the current UX — would a new user understand it in 30 seconds? (3) What feature would have the highest impact if shipped this week? (4) Is there anything that should be cut — features that add complexity without proportional value? Produce a prioritized list of 5 product improvements with rationale. Then execute the single highest-impact UX fix. When done, update the session file:\ndone: <product insight + fix applied>\nnext: <next highest-impact improvement>\ntests: <N pass · N fail>\ntodos: <count> TODOs\nhealth: <good | needs attention | critical>"
+  },
+  {
+    "key": "ux_review",
+    "slot": 10,
+    "icon": "🎨",
+    "label": "UX / design review",
+    "style": "more",
+    "category": "vision",
+    "prompt": "Review the UI/UX of this application as a demanding but fair user. Start the dev server and open the app in a browser. Systematically check: (1) Typography — is all text readable? Minimum 14px body, high contrast (no dark gray on dark bg), (2) Interactive elements — are buttons, links, and inputs obviously clickable? (3) Mobile — does it work at 375px viewport width? (4) Empty states — what does the user see when there is no data? (5) Loading states — are async operations shown clearly? (6) Error states — are errors helpful and actionable? (7) Visual hierarchy — is the most important thing the most prominent thing? Report specific issues as file:line references and fix the top 3. When done, update the session file:\ndone: <UX issues found and fixed>\nnext: <remaining UX issues>\ntests: flows passing\ntodos: <count> TODOs\nhealth: <good | needs attention | critical>"
+  },
+  {
+    "key": "marketing",
+    "slot": 11,
+    "icon": "📣",
+    "label": "Marketing copy",
+    "style": "more",
+    "category": "content",
+    "prompt": "Review this project and write compelling marketing copy. Create all of the following: (1) One-line value proposition — under 12 words, outcome-focused, no jargon, (2) Three-sentence elevator pitch — what it does, who it's for, why it matters, (3) Three feature bullets — each written as a user benefit ('You can...' not 'It has...'), (4) One call-to-action line, (5) Three potential objections and how to answer them. Save the copy to MARKETING.md in the project root. Focus on the user's outcome, not the technology stack. When done, update the session file:\ndone: wrote marketing copy to MARKETING.md\nnext: review copy with fresh eyes, refine weakest section\ntests: n/a\ntodos: 0\nhealth: good"
+  },
+  {
+    "key": "social",
+    "slot": 12,
+    "icon": "📱",
+    "label": "Social media content",
+    "style": "more",
+    "category": "content",
+    "prompt": "Based on what was built or improved in this project recently (check git log for the last week), write ready-to-post social media content: (1) Twitter/X post — under 280 chars, show something concrete (a feature, a metric, a before/after), include one relevant hashtag, (2) LinkedIn post — 3 paragraphs: the problem, what was built, what you learned. Conversational, no buzzwords, (3) A short demo script — 3 bullet points describing what to show in a 30-second screen recording. Keep it authentic — show the actual work, not generic hype. Save to SOCIAL.md in the project root. When done, update the session file:\ndone: wrote social content to SOCIAL.md\nnext: record demo video using the script\ntests: n/a\ntodos: 0\nhealth: good"
+  },
+  {
+    "key": "close_session",
+    "slot": 13,
+    "icon": "🛌",
+    "label": "Close session",
+    "style": "more",
+    "category": "ship",
+    "prompt": "Close this work session cleanly so the next session can start cold. Perform these steps in order:\n\nStep 1 — Finish uncommitted work:\nRun git status. If there are uncommitted changes, commit them with a conventional commit message (<type>(<scope>): <description>). If scratch/debug work, stash or discard it.\n\nStep 2 — Quality gate:\nRun the project type checker and linter (e.g. tsc --noEmit && eslint src/ for TypeScript). They must pass with zero errors. Fix any failures before continuing.\n\nStep 3 — Run tests:\nRun the project test suite. Note the result (N pass / N fail).\n\nStep 4 — Write session handoff:\nDetermine the tab name: run `grep -i \"$(pwd -P)\" ~/.config/claude-projects.conf | head -1 | cut -d'|' -f1 | tr -d ' '`. Use that as TAB (fall back to directory name if empty). Write exactly these lines to ~/.claude/sessions/<TAB>.md:\ndone: <one sentence — what was completed this session>\nnext: <one sentence — the single most important action for next session>\ntests: <e.g. \"18/18 smoke pass · tsc clean · eslint clean\">\ntodos: <e.g. \"0 TODOs\">\nhealth: <good | degraded | critical> — HEAD <short-git-hash>, <one-line status>\n\nStep 5 — Final report:\nPrint a clear summary:\n- Uncommitted changes: YES (committed as <hash>) / NO / STASHED\n- Quality checks: PASS / FAIL\n- Tests: PASS (N/N) / FAIL\n- Session file written to: ~/.claude/sessions/<TAB>.md\n- Safe to close this tab: YES / NO — <reason if NO>\n\n(Note: the popup-suppression sentinel is written automatically by the infrastructure — you do not need to write any /tmp files.)"
+  },
+  {
+    "key": "continue",
+    "slot": null,
+    "icon": "🔄",
+    "label": "Continue",
+    "style": "internal",
+    "category": "dev",
+    "prompt": "Resolve the pending question using available context and keep going. Follow CLAUDE.md. Do not stop to ask again. When done, update the session file with done/next/tests/todos/health lines."
+  }
+]

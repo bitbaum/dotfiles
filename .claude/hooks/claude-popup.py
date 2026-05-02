@@ -321,6 +321,7 @@ QPushButton#deny:hover {{ background: #3d1212; }}
 COUNTDOWN_SECONDS = 12   # default; overridden by settings file if present
 
 _SETTINGS_PATH = os.path.expanduser("~/.config/claude-dashboard-settings.json")
+_META_PATH      = os.path.expanduser("~/.config/claude-prompts.json")
 
 def _load_settings() -> dict:
     try:
@@ -329,6 +330,15 @@ def _load_settings() -> dict:
     except Exception:
         pass
     return {}
+
+def _load_prompt_meta() -> list:
+    """Load prompt metadata from SSOT config file."""
+    try:
+        if os.path.exists(_META_PATH):
+            return json.load(open(_META_PATH))
+    except Exception:
+        pass
+    return []
 
 # ── Helpers ───────────────────────────────────────────────────────────────────
 
@@ -416,36 +426,20 @@ class BasePopup(QWidget):
 
 class ContinuePopup(BasePopup):
 
-    # Six core prompts — the development heartbeat.
-    # Only [1] is visually highlighted (primary CTA).
-    # All others are in the "More" section or Dashboard.
-    # (key, icon, label, style)
-    ACTIONS = [
-        ("1", "⚡", "Next best task",    "primary"),
-        ("2", "🧪", "Test & fix",         "action"),
-        ("3", "📦", "Commit & push",      "action"),
-        ("4", "💎", "Code quality pass",  "action"),
-        ("5", "🔍", "Full audit + plan",  "action"),
-        ("6", "🎯", "Mission alignment",  "action"),
-    ]
-
-    # Secondary prompts — shown when user clicks "More"
-    MORE_ACTIONS = [
-        ("7",  "🌐", "Browser test"),
-        ("8",  "✅", "Deploy checklist"),
-        ("9",  "🏗",  "Product thinking"),
-        ("10", "🎨", "UX / design review"),
-        ("11", "📣", "Marketing copy"),
-        ("12", "📱", "Social media"),
-    ]
     WHISPER_MODELS = ["tiny", "base", "small", "medium"]
 
     def __init__(self, mode: str, label: str, session_file: str = ""):
         super().__init__(timeout_ms=35_000)
         self.mode  = mode
         self.label = label
-        _s = _load_settings()
+        _s    = _load_settings()
+        _meta = _load_prompt_meta()
         self._secs = int(_s.get("countdown_secs", COUNTDOWN_SECONDS))
+        # Build action lists from SSOT meta — slot ≤ 6 core, slot ≥ 7 more
+        self.ACTIONS      = [(str(m["slot"]), m["icon"], m["label"], m.get("style","action"))
+                             for m in _meta if m.get("style") in ("primary","action")]
+        self.MORE_ACTIONS = [(str(m["slot"]), m["icon"], m["label"])
+                             for m in _meta if m.get("style") == "more"]
         self._timer           = None
         self._countdown_label = None
         self._custom_input    = None
@@ -475,10 +469,8 @@ class ContinuePopup(BasePopup):
     def _cancel_countdown(self):
         if self._timer and self._timer.isActive():
             self._timer.stop()
-            # User is engaged — give them 5 minutes before auto-dismiss
-            self._resume_dismiss(300_000)
         if self._countdown_label:
-            self._countdown_label.setText("↑ ↓ navigate  ·  1–6 quick-pick  ·  Esc dismiss")
+            self._countdown_label.setText("↵ Enter to send")
 
     def _start_countdown(self):
         self._timer = QTimer(interval=1000)
@@ -868,7 +860,7 @@ class ContinuePopup(BasePopup):
     def _open_dashboard(self):
         import subprocess
         subprocess.Popen(
-            ["python3", os.path.expanduser("~/.claude/hooks/claude-dashboard.py")],
+            ["xdg-open", "http://localhost:3000/projects"],
             env={**os.environ, "DISPLAY": os.environ.get("DISPLAY", ":0")},
             start_new_session=True,
         )
@@ -905,16 +897,10 @@ class ContinuePopup(BasePopup):
             super().keyPressEvent(e)
 
     def _shift_focus(self, d: int):
-        self._cancel_countdown()          # navigating = user is engaged
         btns = self._action_btns
         f    = self.focusWidget()
         idx  = (btns.index(f) + d) % len(btns) if f in btns else 0
         btns[idx].setFocus()
-
-    def enterEvent(self, e):
-        """Mouse entered the popup — user is looking at it, cancel countdown."""
-        self._cancel_countdown()
-        super().enterEvent(e)
 
 
 # ── Confirm popup ─────────────────────────────────────────────────────────────
