@@ -858,42 +858,59 @@ class ContinuePopup(BasePopup):
         self._position()
 
     def _open_cockpit(self):
-        import socket, urllib.request
+        import urllib.request
         url = "http://localhost:3000/control"
         env = {**os.environ, "DISPLAY": os.environ.get("DISPLAY", ":0")}
 
         def _cockpit_ready():
-            """Returns True only if localhost:3000 is Cockpit (responds to /api/control)."""
             try:
                 r = urllib.request.urlopen("http://localhost:3000/api/control", timeout=1)
                 return r.status == 200
             except Exception:
                 return False
 
+        def _launch_browser():
+            # xdg-open → kde-open5 fails silently when called from a detached process
+            # (no KDE session IPC available). Use the system alternatives pointer directly.
+            for cmd in (
+                ["x-www-browser", url],
+                ["xdg-open", url],
+                ["brave-browser", url],
+                ["firefox", url],
+                ["google-chrome", url],
+            ):
+                try:
+                    subprocess.Popen(
+                        cmd, env=env, start_new_session=True,
+                        stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL,
+                    )
+                    return
+                except FileNotFoundError:
+                    continue
+
         if _cockpit_ready():
-            subprocess.Popen(["xdg-open", url], env=env, start_new_session=True)
+            _launch_browser()
             return
 
-        # Not running — start it, then poll every 2s until ready, then open
+        # Not running — start it, poll until /api/control responds, then open browser
         subprocess.Popen(
             ["bash", "-lc", "cd ~/dev/cockpit && npm run dev"],
-            env=env,
-            start_new_session=True,
+            env=env, start_new_session=True,
         )
-        self._cockpit_poll(0, url, env)
+        self._cockpit_poll(0, url, env, _launch_browser)
 
-    def _cockpit_poll(self, attempt, url, env):
+    def _cockpit_poll(self, attempt, url, env, launch_browser):
         import urllib.request
         if attempt > 20:   # give up after 40s — never open a broken URL
             return
         try:
             r = urllib.request.urlopen("http://localhost:3000/api/control", timeout=1)
             if r.status == 200:
-                subprocess.Popen(["xdg-open", url], env=env, start_new_session=True)
+                launch_browser()
                 return
         except Exception:
             pass
-        QTimer.singleShot(2000, lambda: self._cockpit_poll(attempt + 1, url, env))
+        QTimer.singleShot(2000, lambda: self._cockpit_poll(attempt + 1, url, env, launch_browser))
 
     def _submit_custom(self):
         text = self._custom_input.text().strip()
