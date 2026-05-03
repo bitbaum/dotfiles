@@ -550,6 +550,7 @@ class ContinuePopup(BasePopup):
             v = QLabel(self.session)
             v.setObjectName("sum_val")
             v.setWordWrap(True)
+            v.setMaximumWidth(372)
             box_lay.addWidget(v)
 
         for color, label, key in narrative:
@@ -568,12 +569,14 @@ class ContinuePopup(BasePopup):
             v_lbl   = QLabel(val_text[:PREVIEW] + ("…" if is_long else ""))
             v_lbl.setObjectName("sum_val")
             v_lbl.setWordWrap(True)
+            v_lbl.setMaximumWidth(372)  # card 440 - card margins 40 - box margins 28
             row.addWidget(v_lbl)
 
             if is_long:
                 full = QLabel(val_text)
                 full.setObjectName("sum_more")
                 full.setWordWrap(True)
+                full.setMaximumWidth(372)
                 full.setVisible(False)
                 tog = SafeButton("▸ show more")
                 tog.setObjectName("expand")
@@ -1053,6 +1056,8 @@ def main():
     popup.show()
     popup.raise_()
     popup.activateWindow()  # needed on X11 to raise above other windows
+    # Re-run position after the event loop has laid out widgets (word-wrap heights settle)
+    QTimer.singleShot(0, popup._position)
     app.exec()
 
     if popup.result:

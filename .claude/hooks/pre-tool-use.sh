@@ -25,14 +25,14 @@ if [ "$TOOL_NAME" = "Bash" ]; then
 
   if echo "$COMMAND" | grep -qEi "$DANGEROUS_PATTERN"; then
     _DBUS="unix:path=/run/user/$(id -u)/bus"
-    DISPLAY=:0 DBUS_SESSION_BUS_ADDRESS="$_DBUS" \
+    DISPLAY="${DISPLAY:-:1}" DBUS_SESSION_BUS_ADDRESS="$_DBUS" \
       paplay /usr/share/sounds/freedesktop/stereo/dialog-warning.oga 2>/dev/null &
 
     # Write command to temp file so Python receives it safely (no quoting issues)
     TMPFILE=$(mktemp /tmp/claude-confirm-XXXXXX)
     echo "$COMMAND" > "$TMPFILE"
 
-    CHOICE=$(DISPLAY=:0 DBUS_SESSION_BUS_ADDRESS="$_DBUS" \
+    CHOICE=$(DISPLAY="${DISPLAY:-:1}" DBUS_SESSION_BUS_ADDRESS="$_DBUS" \
       python3 ~/.claude/hooks/claude-popup.py confirm "Bash" "$TMPFILE" 2>/dev/null)
     rm -f "$TMPFILE"
 

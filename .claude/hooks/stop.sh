@@ -63,7 +63,7 @@ play_sound "complete"
 
 SESSION_FILE="$HOME/.claude/sessions/${TAB_NAME}.md"
 
-CHOICE=$(DISPLAY=:0 DBUS_SESSION_BUS_ADDRESS="$_DBUS" \
+CHOICE=$(DISPLAY="${DISPLAY:-:1}" DBUS_SESSION_BUS_ADDRESS="$_DBUS" \
   python3 ~/.claude/hooks/claude-popup.py stop "$LABEL" "$SESSION_FILE" 2>>"$LOG")
 log "popup choice=$CHOICE"
 

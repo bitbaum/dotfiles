@@ -188,6 +188,6 @@ inject_prompt() {
 
 # play_sound <name>
 play_sound() {
-  DISPLAY=:0 DBUS_SESSION_BUS_ADDRESS="$_DBUS" \
+  DISPLAY="${DISPLAY:-:1}" DBUS_SESSION_BUS_ADDRESS="$_DBUS" \
     paplay "/usr/share/sounds/freedesktop/stereo/$1.oga" 2>/dev/null &
 }
