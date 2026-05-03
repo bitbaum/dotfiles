@@ -9,6 +9,11 @@ _DBUS="unix:path=/run/user/$(id -u)/bus"
 # resolve_tab <cwd>
 # Sets TAB_NAME to the exact Zellij tab name for the calling Claude process.
 #
+# Strategy 0 (fastest) — PID file:
+#   The claude() bash wrapper writes /tmp/claude-tab-$$ before exec'ing claude.
+#   Hook reads shell_pid = ps -o ppid= -p $PPID, then cat /tmp/claude-tab-$shell_pid.
+#   Zero process-tree walking. Falls through to Strategy 1 if file is absent.
+#
 # Strategy 1 (primary) — CWD-group pane sort:
 #   Walk: hook ($$) → claude ($PPID) → shell (grandparent).
 #   Read ZELLIJ_PANE_ID from the shell's /proc environ.
@@ -34,9 +39,22 @@ resolve_tab() {
   actual_tabs=$(zellij action query-tab-names 2>/dev/null)
   [ -z "$actual_tabs" ] && return
 
-  # ── Strategy 1: CWD-group pane sort → tab name ──────────────────────────────
-  local shell_pid zellij_pid our_pane_id
+  # ── Strategy 0: PID file written by claude() wrapper at launch time ──────────
+  # The claude() bash function writes /tmp/claude-tab-$$ before exec'ing claude.
+  # $$ in the shell = shell_pid here. This is the cheapest and most reliable path.
+  local shell_pid
   shell_pid=$(ps -o ppid= -p "$PPID" 2>/dev/null | tr -d ' ')
+  if [ -n "$shell_pid" ] && [ -f "/tmp/claude-tab-${shell_pid}" ]; then
+    local s0_name
+    s0_name=$(cat "/tmp/claude-tab-${shell_pid}" 2>/dev/null)
+    if [ -n "$s0_name" ]; then
+      TAB_NAME="$s0_name"
+      return
+    fi
+  fi
+
+  # ── Strategy 1: CWD-group pane sort → tab name ──────────────────────────────
+  local zellij_pid our_pane_id
   if [ -n "$shell_pid" ] && [ -n "$cwd" ]; then
     zellij_pid=$(ps -o ppid= -p "$shell_pid" 2>/dev/null | tr -d ' ')
     our_pane_id=$(tr '\0' '\n' < /proc/"$shell_pid"/environ 2>/dev/null \

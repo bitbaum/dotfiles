@@ -1003,9 +1003,9 @@ def main():
         sf      = sys.argv[3] if len(sys.argv) > 3 else ""
         popup   = ContinuePopup(mode, label, sf)
 
+    popup.setAttribute(Qt.WidgetAttribute.WA_ShowWithoutActivating, True)
     popup.show()
     popup.raise_()
-    popup.activateWindow()
     app.exec()
 
     if popup.result:

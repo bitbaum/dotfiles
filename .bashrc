@@ -303,9 +303,9 @@ if [ -z "${ZELLIJ:-}" ] && command -v zellij >/dev/null 2>&1; then
 fi
 
 # ═══════════════════════════════════════════════════
-# Claude Code — Session Recovery with Zellij Tab Awareness
+# Agent + Cockpit helpers with Zellij Tab Awareness
 # ═══════════════════════════════════════════════════
-_claude_resolve_project_dir() {
+_agent_resolve_project_dir() {
     local CONFIG="$HOME/.config/claude-projects.conf"
     [ -f "$CONFIG" ] || return 1
 
@@ -332,15 +332,20 @@ _claude_resolve_project_dir() {
     echo "$DIR"
 }
 
-claude() {
-    if [ "$PWD" = "$HOME" ] && [ -n "${ZELLIJ:-}" ]; then
-        local PROJECT_DIR
-        PROJECT_DIR=$(_claude_resolve_project_dir)
-        if [ -n "$PROJECT_DIR" ]; then
-            echo "  -> Tab -> $PROJECT_DIR"
-            cd "$PROJECT_DIR" || true
-        fi
+_agent_cd_from_tab_if_home() {
+    [ "$PWD" = "$HOME" ] || return 0
+    [ -n "${ZELLIJ:-}" ] || return 0
+
+    local PROJECT_DIR
+    PROJECT_DIR=$(_agent_resolve_project_dir)
+    if [ -n "$PROJECT_DIR" ]; then
+        echo "  -> Tab -> $PROJECT_DIR"
+        cd "$PROJECT_DIR" || return 1
     fi
+}
+
+claude() {
+    _agent_cd_from_tab_if_home || true
 
     local SESSION_DIR="$HOME/.claude/sessions"
     mkdir -p "$SESSION_DIR"
@@ -374,9 +379,28 @@ claude() {
     fi
 
     echo "$PROJECT|$(date +%s)|$(pwd)" > "$SESSION_FILE"
+
+    # Strategy 0 tab identity: write focused tab name to /tmp so hooks can
+    # resolve the tab instantly without process-tree walking (lib.sh Strategy 0).
+    local _tab
+    _tab=$(zellij action dump-layout 2>/dev/null \
+      | grep 'focus=true' | grep 'tab name=' \
+      | sed 's/.*tab name="\([^"]*\)".*/\1/' | head -1)
+    [ -n "$_tab" ] && printf '%s' "$_tab" > "/tmp/claude-tab-$$"
+
     command claude "$@"
+    rm -f "/tmp/claude-tab-$$"
+}
+
+codex() {
+    _agent_cd_from_tab_if_home || true
+    command codex --no-alt-screen "$@"
+}
+
+cockpit() {
+    cd "$HOME/dev/cockpit" || return 1
+    npm run dev "$@"
 }
 
 # Secrets (passwords, tokens) — loaded from .env, which is gitignored
 [ -f "$HOME/.env" ] && source "$HOME/.env"
-alias claude-dashboard='DISPLAY=:0 python3 ~/.claude/hooks/claude-dashboard.py &'
