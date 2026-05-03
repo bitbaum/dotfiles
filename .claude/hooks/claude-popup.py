@@ -366,7 +366,8 @@ class BasePopup(QWidget):
         self.setWindowFlags(
             Qt.WindowType.FramelessWindowHint |
             Qt.WindowType.WindowStaysOnTopHint |
-            Qt.WindowType.Tool
+            Qt.WindowType.Tool |
+            Qt.WindowType.WindowDoesNotAcceptFocus
         )
         self.setAttribute(Qt.WidgetAttribute.WA_TranslucentBackground)
         self.setStyleSheet(SS)
@@ -857,26 +858,42 @@ class ContinuePopup(BasePopup):
         self._position()
 
     def _open_cockpit(self):
-        import socket
+        import socket, urllib.request
         url = "http://localhost:3000/control"
         env = {**os.environ, "DISPLAY": os.environ.get("DISPLAY", ":0")}
-        try:
-            s = socket.create_connection(("localhost", 3000), timeout=0.5)
-            s.close()
-            running = True
-        except Exception:
-            running = False
-        if not running:
-            subprocess.Popen(
-                ["bash", "-lc", "cd ~/dev/cockpit && npm run dev"],
-                env=env,
-                start_new_session=True,
-            )
-            QTimer.singleShot(5000, lambda: subprocess.Popen(
-                ["xdg-open", url], env=env, start_new_session=True,
-            ))
-        else:
+
+        def _cockpit_ready():
+            """Returns True only if localhost:3000 is Cockpit (responds to /api/control)."""
+            try:
+                r = urllib.request.urlopen("http://localhost:3000/api/control", timeout=1)
+                return r.status == 200
+            except Exception:
+                return False
+
+        if _cockpit_ready():
             subprocess.Popen(["xdg-open", url], env=env, start_new_session=True)
+            return
+
+        # Not running — start it, then poll every 2s until ready, then open
+        subprocess.Popen(
+            ["bash", "-lc", "cd ~/dev/cockpit && npm run dev"],
+            env=env,
+            start_new_session=True,
+        )
+        self._cockpit_poll(0, url, env)
+
+    def _cockpit_poll(self, attempt, url, env):
+        import urllib.request
+        if attempt > 20:   # give up after 40s — never open a broken URL
+            return
+        try:
+            r = urllib.request.urlopen("http://localhost:3000/api/control", timeout=1)
+            if r.status == 200:
+                subprocess.Popen(["xdg-open", url], env=env, start_new_session=True)
+                return
+        except Exception:
+            pass
+        QTimer.singleShot(2000, lambda: self._cockpit_poll(attempt + 1, url, env))
 
     def _submit_custom(self):
         text = self._custom_input.text().strip()
@@ -1016,9 +1033,9 @@ def main():
         sf      = sys.argv[3] if len(sys.argv) > 3 else ""
         popup   = ContinuePopup(mode, label, sf)
 
-    popup.setAttribute(Qt.WidgetAttribute.WA_ShowWithoutActivating, True)
     popup.show()
     popup.raise_()
+    popup.activateWindow()  # needed on X11 to raise above other windows
     app.exec()
 
     if popup.result:
