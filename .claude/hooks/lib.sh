@@ -9,12 +9,15 @@ _DBUS="unix:path=/run/user/$(id -u)/bus"
 # resolve_tab <cwd>
 # Sets TAB_NAME to the exact Zellij tab name for the calling Claude process.
 #
-# Strategy 1 (primary) — process-tree via ZELLIJ_PANE_ID:
-#   Walk: stop/notification hook ($$) → claude ($PPID) → shell (grandparent).
+# Strategy 1 (primary) — CWD-group pane sort:
+#   Walk: hook ($$) → claude ($PPID) → shell (grandparent).
 #   Read ZELLIJ_PANE_ID from the shell's /proc environ.
-#   Collect all terminal-pane shell PIDs under the Zellij server, sort by pane ID.
-#   The sorted index of our pane ID = 1-based position in query-tab-names output.
-#   This correctly handles multiple tabs sharing the same CWD and renamed tabs.
+#   Among all zellij-server children, keep only those whose /proc/PID/cwd
+#   matches ours. Sort those pane IDs → our 1-based rank within the subgroup.
+#   Collect conf-mapped tab names that exist in query-tab-names (in tab order).
+#   The N-th matching tab = our tab.
+#   Robust: unrelated shells dying/living don't affect the same-CWD subgroup,
+#   so unnamed or extra tabs never offset the index.
 #
 # Strategy 2 (fallback) — CWD exact match from conf:
 #   Used only when the process-tree walk fails (e.g., running outside Zellij).
@@ -31,30 +34,71 @@ resolve_tab() {
   actual_tabs=$(zellij action query-tab-names 2>/dev/null)
   [ -z "$actual_tabs" ] && return
 
-  # ── Strategy 1: ZELLIJ_PANE_ID → sorted index → tab name ───────────────────
+  # ── Strategy 1: CWD-group pane sort → tab name ──────────────────────────────
   local shell_pid zellij_pid our_pane_id
   shell_pid=$(ps -o ppid= -p "$PPID" 2>/dev/null | tr -d ' ')
-  if [ -n "$shell_pid" ]; then
+  if [ -n "$shell_pid" ] && [ -n "$cwd" ]; then
     zellij_pid=$(ps -o ppid= -p "$shell_pid" 2>/dev/null | tr -d ' ')
     our_pane_id=$(tr '\0' '\n' < /proc/"$shell_pid"/environ 2>/dev/null \
                   | grep '^ZELLIJ_PANE_ID=' | cut -d= -f2)
 
     if [ -n "$our_pane_id" ] && [ -n "$zellij_pid" ]; then
-      # Build sorted list of all terminal pane IDs under the Zellij server.
-      # These are created in tab-open order, so sorted index = tab position.
-      local tab_idx
-      tab_idx=$(
+      # Rank our pane among shells sharing our CWD (unrelated shells excluded)
+      local group_idx
+      group_idx=$(
+        ps -o pid= --ppid "$zellij_pid" 2>/dev/null | while read -r p; do
+          local pid_pane pid_cwd
+          pid_pane=$(tr '\0' '\n' < /proc/"$p"/environ 2>/dev/null \
+                     | grep '^ZELLIJ_PANE_ID=' | cut -d= -f2)
+          [ -z "$pid_pane" ] && continue
+          pid_cwd=$(realpath "$(readlink /proc/"$p"/cwd 2>/dev/null)" 2>/dev/null)
+          [ "$pid_cwd" = "$cwd" ] || continue
+          printf '%s\n' "$pid_pane"
+        done | sort -n | grep -n "^${our_pane_id}$" | cut -d: -f1
+      )
+
+      if [ -n "$group_idx" ]; then
+        # Tabs in query-tab-names order that conf maps to our CWD
+        local same_cwd_tabs
+        same_cwd_tabs=$(
+          printf '%s\n' "$actual_tabs" | while IFS= read -r t; do
+            local t_lower="${t,,}" found=0
+            while IFS='|' read -r ctab cdir; do
+              [[ "$ctab" =~ ^#.*$ || -z "$ctab" ]] && continue
+              [ "${ctab,,}" = "$t_lower" ] || continue
+              local rdir
+              rdir=$(realpath "$cdir" 2>/dev/null) || continue
+              if [ "$rdir" = "$cwd" ]; then found=1; break; fi
+            done < "$_CONF"
+            [ "$found" -eq 1 ] && printf '%s\n' "$t"
+          done
+        )
+
+        local name
+        name=$(printf '%s\n' "$same_cwd_tabs" | sed -n "${group_idx}p")
+        if [ -n "$name" ]; then
+          TAB_NAME="$name"
+          return
+        fi
+      fi
+
+      # Strategy 1b: global pane-rank fallback.
+      # Used when shell CWD ≠ project CWD (e.g., claude was launched from ~ not the project dir).
+      # Each tab has exactly one shell process; their pane IDs sort in the same order as tab names.
+      # Fragile if unrelated shells have died, but that can only happen when Strategy 1 also fails.
+      local global_idx
+      global_idx=$(
         ps -o pid= --ppid "$zellij_pid" 2>/dev/null | while read -r p; do
           local pid_pane
           pid_pane=$(tr '\0' '\n' < /proc/"$p"/environ 2>/dev/null \
                      | grep '^ZELLIJ_PANE_ID=' | cut -d= -f2)
-          [ -n "$pid_pane" ] && printf '%s\n' "$pid_pane"
+          [ -z "$pid_pane" ] && continue
+          printf '%s\n' "$pid_pane"
         done | sort -n | grep -n "^${our_pane_id}$" | cut -d: -f1
       )
-
-      if [ -n "$tab_idx" ]; then
+      if [ -n "$global_idx" ]; then
         local name
-        name=$(printf '%s\n' "$actual_tabs" | sed -n "${tab_idx}p")
+        name=$(printf '%s\n' "$actual_tabs" | sed -n "${global_idx}p")
         if [ -n "$name" ]; then
           TAB_NAME="$name"
           return
