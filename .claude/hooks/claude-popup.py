@@ -56,23 +56,22 @@ class WhisperThread(QThread):
 # ── Palette ───────────────────────────────────────────────────────────────────
 
 C = dict(
-    card     = "#0f1225",   # deep navy card
-    surface  = "#171d38",   # button / input surface
-    surface2 = "#1e2545",   # hover
-    border   = "#252d55",   # subtle dividers
-    # group headers
-    group_bg = "#0c0f1e",
+    card     = "#111111",   # surface-page (matches Cockpit oklch 0.07)
+    surface  = "#1a1a1a",   # surface-raised
+    surface2 = "#222222",   # hover
+    border   = "#2c2c2c",   # border-default on dark bg
+    group_bg = "#0d0d0d",
 
-    accent   = "#7c86f5",   # indigo — dev actions
-    accent_d = "#1a1e50",   # dark indigo fill
+    accent   = "#8b92ff",   # soft indigo — dev actions
+    accent_d = "#151840",   # dark indigo fill
 
     ship     = "#4ade80",   # green — ship/deploy
     ship_d   = "#0d2b1a",   # dark green fill
 
-    text1    = "#f0f2ff",   # near-white body text
-    text2    = "#a0a8d8",   # secondary text
-    text3    = "#606890",   # muted hints
-    group_lbl= "#7080c0",   # group label text
+    text1    = "#eaeaea",   # text-primary (oklch 0.92)
+    text2    = "#909090",   # text-secondary (oklch 0.65)
+    text3    = "#555555",   # text-muted
+    group_lbl= "#5c5c5c",   # group label
 
     green    = "#4ade80",
     green_d  = "#0d2b1a",
@@ -724,11 +723,11 @@ class ContinuePopup(BasePopup):
         hdr.addWidget(proj)
         hdr.addStretch()
 
-        dash_btn = QPushButton("⊞ Dashboard")
+        dash_btn = QPushButton("⊞ Cockpit")
         dash_btn.setObjectName("dash")
-        dash_btn.setToolTip("Open Projects Dashboard")
+        dash_btn.setToolTip("Open Cockpit control panel (localhost:3000/control)")
         dash_btn.setCursor(QCursor(Qt.CursorShape.PointingHandCursor))
-        dash_btn.clicked.connect(self._open_dashboard)
+        dash_btn.clicked.connect(self._open_cockpit)
         hdr.addWidget(dash_btn)
 
         dot_color  = C['green'] if self.mode == "stop" else C['amber']
@@ -857,13 +856,27 @@ class ContinuePopup(BasePopup):
         self.adjustSize()
         self._position()
 
-    def _open_dashboard(self):
-        import subprocess
-        subprocess.Popen(
-            ["xdg-open", "http://localhost:3000/projects"],
-            env={**os.environ, "DISPLAY": os.environ.get("DISPLAY", ":0")},
-            start_new_session=True,
-        )
+    def _open_cockpit(self):
+        import socket
+        url = "http://localhost:3000/control"
+        env = {**os.environ, "DISPLAY": os.environ.get("DISPLAY", ":0")}
+        try:
+            s = socket.create_connection(("localhost", 3000), timeout=0.5)
+            s.close()
+            running = True
+        except Exception:
+            running = False
+        if not running:
+            subprocess.Popen(
+                ["bash", "-lc", "cd ~/dev/cockpit && npm run dev"],
+                env=env,
+                start_new_session=True,
+            )
+            QTimer.singleShot(5000, lambda: subprocess.Popen(
+                ["xdg-open", url], env=env, start_new_session=True,
+            ))
+        else:
+            subprocess.Popen(["xdg-open", url], env=env, start_new_session=True)
 
     def _submit_custom(self):
         text = self._custom_input.text().strip()
