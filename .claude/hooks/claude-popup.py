@@ -238,6 +238,24 @@ QPushButton#dash:hover {{
     border-color: {accent};
 }}
 
+/* ── Close (×) button ── */
+QPushButton#close_btn {{
+    background: transparent;
+    color: {text3};
+    border: none;
+    border-radius: 6px;
+    font-size: 16px;
+    min-width: 26px;
+    max-width: 26px;
+    min-height: 26px;
+    max-height: 26px;
+    padding: 0px;
+}}
+QPushButton#close_btn:hover {{
+    background: {red_d};
+    color: {red};
+}}
+
 /* ── More toggle & items ── */
 QPushButton#more_toggle {{
     background: transparent;
@@ -743,6 +761,14 @@ class ContinuePopup(BasePopup):
             f"padding:3px 10px;background:{C['surface']};border-radius:10px;"
             f"border:1px solid {dot_color}44;")
         hdr.addWidget(badge)
+
+        close_btn = QPushButton("×")
+        close_btn.setObjectName("close_btn")
+        close_btn.setToolTip("Dismiss  (Esc)")
+        close_btn.setCursor(QCursor(Qt.CursorShape.PointingHandCursor))
+        close_btn.clicked.connect(self._dismiss)
+        hdr.addWidget(close_btn)
+
         lay.addLayout(hdr)
 
         lay.addSpacing(14)
@@ -982,6 +1008,14 @@ class ConfirmPopup(BasePopup):
         title.setObjectName("proj")
         hdr.addWidget(title)
         hdr.addStretch()
+
+        close_btn = QPushButton("×")
+        close_btn.setObjectName("close_btn")
+        close_btn.setToolTip("Dismiss  (Esc)")
+        close_btn.setCursor(QCursor(Qt.CursorShape.PointingHandCursor))
+        close_btn.clicked.connect(self._dismiss)
+        hdr.addWidget(close_btn)
+
         lay.addLayout(hdr)
 
         lay.addSpacing(4)
