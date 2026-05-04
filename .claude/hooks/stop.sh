@@ -16,46 +16,43 @@ CWD=$(echo "$INPUT" | jq -r '.cwd // empty')
 resolve_tab "$CWD"
 LABEL="${TAB_NAME:-$(basename "$CWD")}"
 log "fired — label=$LABEL"
+[ -z "$TAB_NAME" ] && exit 0
 
 # clear current-prompt tracking — Claude just finished whatever it was doing
-rm -f "/tmp/claude-current-prompt-${TAB_NAME:-default}"
+rm -f "/tmp/claude-current-prompt-${TAB_NAME}"
 
 # close_session sentinel means: "don't show popup; mark session as closed"
-SENTINEL="/tmp/claude-session-closed-${TAB_NAME:-default}"
+SENTINEL="/tmp/claude-session-closed-${TAB_NAME}"
 if [ -f "$SENTINEL" ]; then
   log "close-session sentinel found — writing closed file and exiting without popup"
   rm -f "$SENTINEL"
   # Write closed timestamp (Claude actually finished the close_session prompt now)
   CLOSED_TS=$(date +%s)
-  echo "$CLOSED_TS" > "/tmp/claude-closed-${TAB_NAME:-default}"
-  rm -f "/tmp/claude-ready-${TAB_NAME:-default}"
-  rm -f "/tmp/claude-closing-${TAB_NAME:-default}"
+  echo "$CLOSED_TS" > "/tmp/claude-closed-${TAB_NAME}"
+  rm -f "/tmp/claude-ready-${TAB_NAME}"
+  rm -f "/tmp/claude-closing-${TAB_NAME}"
   # Persist to Cockpit DB (fire-and-forget — /tmp is the primary signal, DB is for durability)
-  if [ -n "$TAB_NAME" ]; then
-    curl -sf -X PATCH "http://localhost:3000/api/project-states/${TAB_NAME}" \
-      -H "Content-Type: application/json" \
-      -d "{\"tabName\":\"${TAB_NAME}\",\"closedAt\":\"$(date -Iseconds)\"}" &>/dev/null &
-  fi
+  curl -sf -X PATCH "http://localhost:3000/api/project-states/${TAB_NAME}" \
+    -H "Content-Type: application/json" \
+    -d "{\"tabName\":\"${TAB_NAME}\",\"closedAt\":\"$(date -Iseconds)\"}" &>/dev/null &
   exit 0
 fi
 
 # Normal exit — clear any stale close state from a previous close_session
-rm -f "/tmp/claude-closing-${TAB_NAME:-default}"
-rm -f "/tmp/claude-closed-${TAB_NAME:-default}"
+rm -f "/tmp/claude-closing-${TAB_NAME}"
+rm -f "/tmp/claude-closed-${TAB_NAME}"
 
 # Signal to Cockpit /control that this project just finished (phone remote control)
-READY="/tmp/claude-ready-${TAB_NAME:-default}"
+READY="/tmp/claude-ready-${TAB_NAME}"
 echo "$(date +%s)" > "$READY"
 
 # Persist ready timestamp to Cockpit DB (fire-and-forget)
-if [ -n "$TAB_NAME" ]; then
-  curl -sf -X PATCH "http://localhost:3000/api/project-states/${TAB_NAME}" \
-    -H "Content-Type: application/json" \
-    -d "{\"tabName\":\"${TAB_NAME}\",\"readyAt\":\"$(date -Iseconds)\"}" &>/dev/null &
-fi
+curl -sf -X PATCH "http://localhost:3000/api/project-states/${TAB_NAME}" \
+  -H "Content-Type: application/json" \
+  -d "{\"tabName\":\"${TAB_NAME}\",\"readyAt\":\"$(date -Iseconds)\"}" &>/dev/null &
 
 # Block notification.sh from auto-injecting while this popup is open
-LOCK="/tmp/claude-stop-active-${TAB_NAME:-default}"
+LOCK="/tmp/claude-stop-active-${TAB_NAME}"
 touch "$LOCK"
 trap "rm -f '$LOCK'" EXIT
 
@@ -84,7 +81,7 @@ else
 
   # close_session means "stop here" — write sentinel now so the NEXT stop hook
   # (after Claude finishes the close_session prompt) skips the popup and writes closed file.
-  if [ "$KEY" = "close_session" ] && [ -n "$TAB_NAME" ]; then
+  if [ "$KEY" = "close_session" ]; then
     touch "/tmp/claude-session-closed-${TAB_NAME}"
     echo "$(date +%s)" > "/tmp/claude-closing-${TAB_NAME}"
     rm -f "/tmp/claude-ready-${TAB_NAME}"
@@ -95,7 +92,7 @@ else
   fi
 
   # Wrap with session context if available
-  if [ -n "$TAB_NAME" ] && [ -f "$SESSION_FILE" ]; then
+  if [ -f "$SESSION_FILE" ]; then
     SESSION=$(cat "$SESSION_FILE")
     PROMPT=$(printf '%s\n\nSession state from last run:\n%s\n\nUpdate %s when done: what you completed and what remains.' \
       "$BASE" "$SESSION" "$SESSION_FILE")

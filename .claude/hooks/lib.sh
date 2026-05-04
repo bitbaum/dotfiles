@@ -162,8 +162,10 @@ resolve_tab() {
     TAB_NAME="$exact_match"
   elif [ "$exact_count" -eq 0 ] && [ "$sw_count" -eq 1 ]; then
     TAB_NAME="$sw_match"
+  else
+    # All strategies failed (ambiguous or no match) — warn so the skip is visible in logs
+    echo "claude-hook: could not resolve tab for cwd=$1 (exact=$exact_count sw=$sw_count) — skipping state write" >&2
   fi
-  # exact_count > 1 or sw_count > 1: ambiguous — leave TAB_NAME="" so inject_prompt refuses
 }
 
 # get_prompt <key>
