@@ -372,6 +372,13 @@ class FocusCancelInput(QLineEdit):
         self._on_focus = on_focus
     def focusInEvent(self, e):
         self._on_focus()
+        # Grab OS-level focus so keyboard input reaches this field.
+        # WindowDoesNotAcceptFocus only blocks automatic focus on show;
+        # an explicit activateWindow() after a deliberate click is fine.
+        w = self.window()
+        if w:
+            w.activateWindow()
+            w.raise_()
         super().focusInEvent(e)
 
 
@@ -510,6 +517,10 @@ class ContinuePopup(BasePopup):
                 f"Auto-running ⚡ in {self._secs}s  ·  Esc to cancel")
 
     def _choose(self, key):
+        # If user is composing a custom prompt, don't auto-choose an action
+        if not key.startswith("custom:") and self._custom_input and self._custom_input.text().strip():
+            self._cancel_countdown()
+            return
         if self._timer and self._timer.isActive():
             self._timer.stop()
         super()._choose(key)
