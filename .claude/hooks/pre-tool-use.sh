@@ -33,7 +33,7 @@ if [ "$TOOL_NAME" = "Bash" ]; then
     echo "$COMMAND" > "$TMPFILE"
 
     CHOICE=$(DISPLAY="${DISPLAY:-:1}" DBUS_SESSION_BUS_ADDRESS="$_DBUS" \
-      python3 ~/.claude/hooks/claude-popup.py confirm "Bash" "$TMPFILE" 2>/dev/null)
+      python3 ~/.claude/hooks/beacon.py confirm "Bash" "$TMPFILE" 2>/dev/null)
     rm -f "$TMPFILE"
 
     [ "$CHOICE" = "allow" ] && echo "$ALLOW" || echo "$DENY"

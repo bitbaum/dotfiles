@@ -1,10 +1,10 @@
 #!/usr/bin/env python3
 """
-Claude Code — unified popup for all hooks.
+Beacon — Claude Code desktop overlay for session stops and tool confirms.
 
 Usage:
-  claude-popup.py stop    <project_label> [session_file]
-  claude-popup.py confirm <tool_name> <cmd_file>
+  beacon.py stop    <project_label> [session_file]
+  beacon.py confirm <tool_name> <cmd_file>
 """
 
 import sys, os, json
@@ -134,13 +134,6 @@ QWidget#summary_card {{
     background: {surface};
     border-radius: 10px;
     border: 1px solid {border};
-}}
-QLabel#sum_key {{
-    color: {text3};
-    font-size: 10px;
-    font-weight: 700;
-    letter-spacing: 1.2px;
-    text-transform: uppercase;
 }}
 QLabel#sum_val {{
     color: {text1};
@@ -587,14 +580,14 @@ class ContinuePopup(BasePopup):
                 div.setStyleSheet(f"background:{C['border']};max-height:1px;min-height:1px;")
                 box_lay.addWidget(div)
 
-        # ── Narrative rows ──
+        # ── Narrative rows — UP NEXT first (actionable), DONE last (context) ──
         PREVIEW = 200
         narrative = [
-            (C['green'], "DONE",        'done'),
-            (C['amber'], "IN PROGRESS", 'in_progress'),
-            (C['cyan'],  "UP NEXT",     'next'),
+            (C['cyan'],  "UP NEXT",     'next',        True),
+            (C['amber'], "IN PROGRESS", 'in_progress', True),
+            (C['green'], "DONE",        'done',         False),
         ]
-        has_narrative = any(k in parsed for _, _, k in narrative)
+        has_narrative = any(k in parsed for _, _, k, _ in narrative)
         if not has_narrative and not meta_keys:
             v = QLabel(self.session)
             v.setObjectName("sum_val")
@@ -602,7 +595,7 @@ class ContinuePopup(BasePopup):
             v.setMaximumWidth(480)
             box_lay.addWidget(v)
 
-        for color, label, key in narrative:
+        for color, label, key, prominent in narrative:
             if key not in parsed:
                 continue
             val_text = parsed[key]
@@ -618,14 +611,18 @@ class ContinuePopup(BasePopup):
             v_lbl   = QLabel(val_text[:PREVIEW] + ("…" if is_long else ""))
             v_lbl.setObjectName("sum_val")
             v_lbl.setWordWrap(True)
-            v_lbl.setMaximumWidth(400)
+            v_lbl.setMaximumWidth(480)
+            if not prominent:
+                v_lbl.setStyleSheet(f"color:{C['text2']};font-size:14px;line-height:1.5;")
             row.addWidget(v_lbl)
 
             if is_long:
                 full = QLabel(val_text)
                 full.setObjectName("sum_more")
                 full.setWordWrap(True)
-                full.setMaximumWidth(400)
+                full.setMaximumWidth(480)
+                if not prominent:
+                    full.setStyleSheet(f"color:{C['text2']};font-size:14px;line-height:1.5;")
                 full.setVisible(False)
                 tog = SafeButton("▸ show more")
                 tog.setObjectName("expand")
@@ -1109,6 +1106,7 @@ def main():
         sys.exit(1)
     os.environ.setdefault("DISPLAY", ":0")
     app = QApplication(sys.argv)
+    app.setApplicationName("Beacon")
 
     mode = sys.argv[1]
     if mode == "confirm":

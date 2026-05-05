@@ -51,17 +51,25 @@ curl -sf -X PATCH "http://localhost:3000/api/project-states/${TAB_NAME}" \
   -H "Content-Type: application/json" \
   -d "{\"tabName\":\"${TAB_NAME}\",\"readyAt\":\"$(date -Iseconds)\"}" &>/dev/null &
 
+play_sound "complete"
+
+# If Cockpit is running, it handles auto-continue via the web UI — skip native popup.
+# The web UI pauses when the user is typing; the native popup can't detect that and
+# would race against Cockpit, injecting a prompt while the user is mid-sentence.
+if curl -sf --max-time 1 "http://localhost:3000/api/control" >/dev/null 2>&1; then
+  log "Cockpit running — skipping native popup, Cockpit handles auto-continue for $LABEL"
+  exit 0
+fi
+
 # Block notification.sh from auto-injecting while this popup is open
 LOCK="/tmp/claude-stop-active-${TAB_NAME}"
 touch "$LOCK"
 trap "rm -f '$LOCK'" EXIT
 
-play_sound "complete"
-
 SESSION_FILE="$HOME/.claude/sessions/${TAB_NAME}.md"
 
 CHOICE=$(DISPLAY="${DISPLAY:-:1}" DBUS_SESSION_BUS_ADDRESS="$_DBUS" \
-  python3 ~/.claude/hooks/claude-popup.py stop "$LABEL" "$SESSION_FILE" 2>>"$LOG")
+  python3 ~/.claude/hooks/beacon.py stop "$LABEL" "$SESSION_FILE" 2>>"$LOG")
 log "popup choice=$CHOICE"
 
 [ -z "$CHOICE" ] && exit 0
