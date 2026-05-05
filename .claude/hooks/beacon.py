@@ -7,7 +7,7 @@ Usage:
   beacon.py confirm <tool_name> <cmd_file>
 """
 
-import sys, os, json
+import sys, os, json, subprocess
 from PyQt6.QtWidgets import (
     QApplication, QWidget, QVBoxLayout, QHBoxLayout,
     QPushButton, QLabel, QLineEdit, QGraphicsDropShadowEffect, QFrame,
