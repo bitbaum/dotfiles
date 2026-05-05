@@ -487,6 +487,7 @@ class ContinuePopup(BasePopup):
     def _cancel_countdown(self):
         if self._timer and self._timer.isActive():
             self._timer.stop()
+        self._pause_dismiss()   # user is engaging — don't auto-dismiss either
         if self._countdown_label:
             self._countdown_label.setText("↵ Enter to send")
 
@@ -829,6 +830,7 @@ class ContinuePopup(BasePopup):
         self._custom_input.setObjectName("custom")
         self._custom_input.setPlaceholderText("Custom prompt — type or speak…")
         self._custom_input.returnPressed.connect(self._submit_custom)
+        self._custom_input.textChanged.connect(self._cancel_countdown)  # stop countdown on any input
         input_row.addWidget(self._custom_input)
 
         mic_col = QVBoxLayout()
