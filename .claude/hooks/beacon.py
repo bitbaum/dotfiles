@@ -149,8 +149,8 @@ QPushButton#expand {{
     background: transparent;
     color: {text3};
     border: none;
-    font-size: 11px;
-    padding: 0px;
+    font-size: 12px;
+    padding: 2px 0px;
     text-align: left;
 }}
 QPushButton#expand:hover {{ color: {text2}; }}
