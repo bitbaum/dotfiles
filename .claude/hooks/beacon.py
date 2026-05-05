@@ -566,7 +566,7 @@ class ContinuePopup(BasePopup):
             strip.setSpacing(16)
             strip.addStretch()
             for mk in meta_keys:
-                icon = {'tests': '🧪', 'todos': '📝', 'health': '❤'}[mk]
+                icon = {'tests': '🧪', 'todos': '📝', 'health': '❤️'}[mk]
                 color = h_color if mk == 'health' else C['text2']
                 lbl = QLabel(f"{icon}  {parsed[mk]}")
                 lbl.setStyleSheet(
