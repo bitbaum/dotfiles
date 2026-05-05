@@ -553,8 +553,17 @@ class ContinuePopup(BasePopup):
         box_lay.setContentsMargins(16, 14, 16, 14)
         box_lay.setSpacing(12)
 
-        # ── Health strip ──
-        meta_keys = [k for k in ('tests', 'todos', 'health') if k in parsed]
+        # ── Health strip — only show when there's something worth flagging ──
+        def _strip_notable(k, v):
+            if k == 'tests'  and v.lower() in ('no suite', 'no tests', 'n/a', ''):
+                return False
+            if k == 'todos'  and v.strip().startswith('0'):
+                return False
+            if k == 'health' and v.lower().startswith(('good', 'excellent')):
+                return False
+            return True
+        meta_keys = [k for k in ('tests', 'todos', 'health')
+                     if k in parsed and _strip_notable(k, parsed[k])]
         if meta_keys:
             health_val = parsed.get('health', '').lower()
             h_color = (C['green']  if health_val in ('good', 'excellent')
