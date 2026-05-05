@@ -136,19 +136,21 @@ QWidget#summary_card {{
     border: 1px solid {border};
 }}
 QLabel#sum_key {{
+    color: {text3};
     font-size: 10px;
     font-weight: 700;
-    letter-spacing: 0.8px;
+    letter-spacing: 1.2px;
     text-transform: uppercase;
 }}
 QLabel#sum_val {{
     color: {text1};
-    font-size: 12px;
-    line-height: 1.4;
+    font-size: 16px;
+    line-height: 1.55;
 }}
 QLabel#sum_more {{
-    color: {text2};
-    font-size: 11px;
+    color: {text1};
+    font-size: 16px;
+    line-height: 1.55;
 }}
 QPushButton#expand {{
     background: transparent;
@@ -548,8 +550,8 @@ class ContinuePopup(BasePopup):
         box = QWidget()
         box.setObjectName("summary_card")
         box_lay = QVBoxLayout(box)
-        box_lay.setContentsMargins(14, 12, 14, 12)
-        box_lay.setSpacing(10)
+        box_lay.setContentsMargins(16, 14, 16, 14)
+        box_lay.setSpacing(12)
 
         # ── Health strip ──
         meta_keys = [k for k in ('tests', 'todos', 'health') if k in parsed]
@@ -566,7 +568,7 @@ class ContinuePopup(BasePopup):
                 color = h_color if mk == 'health' else C['text2']
                 lbl = QLabel(f"{icon}  {parsed[mk]}")
                 lbl.setStyleSheet(
-                    f"color:{color};font-size:11px;font-weight:600;")
+                    f"color:{color};font-size:12px;font-weight:600;")
                 strip.addWidget(lbl)
             strip.addStretch()
             box_lay.addLayout(strip)
@@ -577,7 +579,7 @@ class ContinuePopup(BasePopup):
                 box_lay.addWidget(div)
 
         # ── Narrative rows ──
-        PREVIEW = 90
+        PREVIEW = 200
         narrative = [
             (C['green'], "DONE",        'done'),
             (C['amber'], "IN PROGRESS", 'in_progress'),
@@ -588,7 +590,7 @@ class ContinuePopup(BasePopup):
             v = QLabel(self.session)
             v.setObjectName("sum_val")
             v.setWordWrap(True)
-            v.setMaximumWidth(372)
+            v.setMaximumWidth(480)
             box_lay.addWidget(v)
 
         for color, label, key in narrative:
@@ -596,35 +598,37 @@ class ContinuePopup(BasePopup):
                 continue
             val_text = parsed[key]
             row = QVBoxLayout()
-            row.setSpacing(2)
+            row.setSpacing(4)
 
             k_lbl = QLabel(label)
             k_lbl.setStyleSheet(
-                f"color:{color};font-size:10px;font-weight:700;letter-spacing:0.8px;")
+                f"color:{color};font-size:12px;font-weight:700;letter-spacing:1.0px;")
             row.addWidget(k_lbl)
 
             is_long = len(val_text) > PREVIEW
             v_lbl   = QLabel(val_text[:PREVIEW] + ("…" if is_long else ""))
             v_lbl.setObjectName("sum_val")
             v_lbl.setWordWrap(True)
-            v_lbl.setMaximumWidth(372)  # card 440 - card margins 40 - box margins 28
+            v_lbl.setMaximumWidth(400)
             row.addWidget(v_lbl)
 
             if is_long:
                 full = QLabel(val_text)
                 full.setObjectName("sum_more")
                 full.setWordWrap(True)
-                full.setMaximumWidth(372)
+                full.setMaximumWidth(400)
                 full.setVisible(False)
                 tog = SafeButton("▸ show more")
                 tog.setObjectName("expand")
                 tog.setCursor(QCursor(Qt.CursorShape.PointingHandCursor))
                 tog.pressed.connect(self._cancel_countdown)
                 def _flip(b=tog, s=v_lbl, f=full):
-                    exp = f.isVisible()
-                    s.setVisible(exp); f.setVisible(not exp)
-                    b.setText("▾ show less" if not exp else "▸ show more")
+                    expanded = f.isVisible()
+                    s.setVisible(expanded)
+                    f.setVisible(not expanded)
+                    b.setText("▾ show less" if not expanded else "▸ show more")
                     self.adjustSize()
+                    self._position()
                 tog.clicked.connect(_flip)
                 row.addWidget(tog)
                 row.addWidget(full)
@@ -751,7 +755,7 @@ class ContinuePopup(BasePopup):
         outer = QVBoxLayout(self)
         outer.setContentsMargins(16, 16, 16, 16)
 
-        card = self._make_card(440)
+        card = self._make_card(540)
         lay  = QVBoxLayout(card)
         lay.setContentsMargins(20, 18, 20, 16)
         lay.setSpacing(0)
