@@ -497,6 +497,10 @@ class ContinuePopup(BasePopup):
         self._timer.start()
 
     def _tick(self):
+        # If user has started typing, cancel the countdown instead of auto-submitting
+        if self._custom_input and self._custom_input.text().strip():
+            self._cancel_countdown()
+            return
         self._secs -= 1
         if self._secs <= 0:
             self._timer.stop()
@@ -511,6 +515,10 @@ class ContinuePopup(BasePopup):
         super()._choose(key)
 
     def _dismiss(self):
+        # Never auto-dismiss while the user is composing a custom prompt
+        if self._custom_input and self._custom_input.text().strip():
+            self._pause_dismiss()
+            return
         if self._timer and self._timer.isActive():
             self._timer.stop()
         super()._dismiss()
