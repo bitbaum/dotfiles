@@ -216,6 +216,10 @@ Stop and redesign if you find yourself:
 | Magic numbers (hardcoded stats, counts, metrics) | #2 (one source of truth) | Query from DB or source from config SSOT |
 | Premature abstraction | #5 (simplicity scales) | Wait for 3 instances |
 | Error handling "everywhere" | #1 (serve humans) | Handle where errors occur |
+| Hardcoded hex color in className (`bg-[#hex]`) | #2 (one source of truth) | CSS var in globals.css + semantic Tailwind class |
+| Hardcoded hex color in inline style | #2 (one source of truth) | CSS var in globals.css + className |
+| Literal color value in tailwind.config | #2 (one source of truth) | `'var(--color-name)'` — never `'#hex'` |
+| Design token defined in 2+ files | #2 (one source of truth) | Consolidate to globals.css only |
 
 ---
 
@@ -304,6 +308,97 @@ Every async operation needs:
 - Focus states visible
 - Alt text for images
 - Semantic HTML
+
+---
+
+## Design System Standards
+
+This applies to every project with a CSS/UI layer. Design is subject to the same SSOT, DRY, and SoC rules as code.
+
+### The Rule: CSS Custom Properties Are the Only SSOT for Design Tokens
+
+All visual decisions (colors, fonts, spacing, radii, shadows) live in **one file** — `app/globals.css` (or `src/styles/globals.css`). Nothing else may define or duplicate these values.
+
+**Canonical structure:**
+```css
+:root {
+  /* Tier 1 — Primitive palette (raw values, not used directly by components) */
+  --primitive-teal-600: #0D6E78;
+  --primitive-orange-500: #E06B3A;
+
+  /* Tier 2 — Semantic tokens (what things MEAN — always use these) */
+  --color-brand:       var(--primitive-teal-600);
+  --color-action:      var(--primitive-orange-500);
+  --color-bg:          #FAF8F5;
+  --color-surface:     #FFFFFF;
+  --color-border:      #E8E2D9;
+  --color-text:        #1C1917;
+  --color-text-muted:  #78716C;
+
+  /* Typography */
+  --font-sans: 'Inter', sans-serif;
+  --font-mono: 'JetBrains Mono', monospace;
+
+  /* Radii / Shadows */
+  --radius-card:   16px;
+  --radius-btn:    8px;
+  --shadow-card:   0 1px 4px rgb(0 0 0 / 0.08);
+}
+```
+
+**Tailwind config MUST reference CSS vars — never hardcode literal values:**
+```ts
+// ✓ CORRECT — retheme by changing globals.css only
+extend: {
+  colors: { brand: 'var(--color-brand)', action: 'var(--color-action)' },
+  borderRadius: { card: 'var(--radius-card)', btn: 'var(--radius-btn)' },
+  boxShadow: { card: 'var(--shadow-card)' },
+}
+
+// ✗ WRONG — retheme requires finding every hardcoded value across the codebase
+extend: { colors: { brand: '#0D6E78' } }
+```
+
+**Components MUST use semantic Tailwind classes — never arbitrary values or inline styles for brand decisions:**
+```tsx
+// ✓ CORRECT
+<button className="bg-action text-white rounded-btn shadow-card">
+
+// ✗ WRONG
+<button className="bg-[#E06B3A] rounded-[8px]" style={{ boxShadow: '0 1px 4px ...' }}>
+```
+
+### Design SSOT Violations — Catch and Fix Immediately
+
+When doing ANY work touching UI, scan for and fix these before moving on:
+
+| Violation | Example | Fix |
+|-----------|---------|-----|
+| Arbitrary hex in className | `bg-[#1a2b3c]`, `text-[#fff]` | Define CSS var + semantic Tailwind class |
+| Hex in inline style | `style={{ color: '#1a2b3c' }}` | Move to CSS var, use className |
+| Literal color in tailwind.config | `brand: '#0D6E78'` | Change to `brand: 'var(--color-brand)'` |
+| Hardcoded font in className | `font-['Inter']` | Use `font-sans` (from Tailwind + CSS var) |
+| Radius/shadow hardcoded | `rounded-[12px]`, `shadow-[0_4px_...]` | Define `--radius-*` / `--shadow-*` vars |
+| Token defined in multiple files | Same color in tailwind.config AND globals.css as literal | Keep only in globals.css as CSS var |
+
+### Design File Roles (SoC)
+
+```
+app/globals.css      ← SSOT: ALL design tokens as CSS custom properties
+tailwind.config.ts   ← maps Tailwind utilities → CSS vars (NEVER literal values)
+lib/tokens.ts        ← (optional) TypeScript re-export of token NAMES for non-CSS contexts
+                        (Recharts charts, Satori OG images, canvas) — values come from CSS vars at runtime
+components/          ← consume Tailwind semantic classes only; zero raw values
+```
+
+### Why This Matters
+
+With this structure:
+- **Retheme the entire product**: edit `globals.css` only — zero component changes needed
+- **Dark mode**: CSS vars flip via `.dark` class — zero component changes needed
+- **Agent audit**: `grep -r '\[#' src/` instantly shows every violation
+
+Without this structure, "make it look like x.ai" means touching hundreds of component files.
 
 ---
 
@@ -419,14 +514,23 @@ A memory MCP server is available. Use it to persist context across sessions so w
 **Core principle: ground truth first, memory second.** Git state is always accurate. Memory may be stale. Never trust memory alone.
 
 - **Step 1: Detect project from zellij tab** (if `$HOME` and `ZELLIJ` is set):
-  1. Run this exact command to find which tab this Claude process is in:
+  1. **Check the pane identity file** — the `claude()` bash wrapper writes `/tmp/claude-pane-<ZELLIJ_PANE_ID>` at launch time, keyed by pane ID (not PID) so it survives context-limit continuations. Run:
      ```bash
-     # Find our shell (parent of claude), then zellij server (parent of shell), then correlate tab names with zellij's child PIDs
-     _SHELL_PID=$(ps -o ppid= -p $PPID | tr -d ' ') && _ZS=$(ps -o ppid= -p $_SHELL_PID | tr -d ' ') && _TABS=$(zellij action query-tab-names 2>/dev/null) && _PIDS=$(ps -o pid= --ppid $_ZS 2>/dev/null | tr -d ' ') && paste <(echo "$_TABS") <(echo "$_PIDS") | while IFS=$'\t' read -r tab pid; do [ "$pid" = "$_SHELL_PID" ] && echo "$tab" && break; done
+     [ -n "$ZELLIJ_PANE_ID" ] && [ -f "/tmp/claude-pane-${ZELLIJ_PANE_ID}" ] \
+       && cat "/tmp/claude-pane-${ZELLIJ_PANE_ID}"
      ```
-     **Why**: `focus=true` in dump-layout tracks the *viewed* tab, not the tab running Claude. Instead, this walks the process tree: `claude (PPID)` → `bash shell` → `zellij server`, then correlates `query-tab-names` order with zellij's child PIDs to find the tab owning our shell.
-  2. Clean the tab name: strip trailing `$` and whitespace, then match case-insensitively against `~/.config/claude-projects.conf` (format: `tab_name|directory`)
-  3. If found and directory exists, `cd` to it and tell the user: "Detected project: X (from zellij tab)"
+     If this prints a tab name, use it — it's the most reliable source.
+
+  2. **If no file exists** — the pane file is written at `claude()` launch time and deleted when `claude` exits. A missing file means either (a) first launch after the fix was deployed, or (b) session was killed without cleanup. Fall back to `dump-layout` ONLY if you are confident the user is still focused on their tab (e.g., they just ran a command):
+     ```bash
+     zellij action dump-layout 2>/dev/null \
+       | grep 'focus=true' | grep 'tab name=' \
+       | sed 's/.*tab name="\([^"]*\)".*/\1/' | head -1
+     ```
+     **Caveat**: this gives the CURRENTLY VIEWED tab, not necessarily the tab running Claude. If the user switched tabs since launching, this will be wrong. When uncertain, ask the user: "Which project are we working on?"
+
+  3. Clean the tab name: strip trailing `$` and whitespace, then match case-insensitively against `~/.config/claude-projects.conf` (format: `tab_name|directory`)
+  4. If found and directory exists, `cd` to it and tell the user: "Detected project: X (from zellij tab)"
 
 - **Step 2: Inspect ground truth** (run in parallel once in the project directory):
   ```bash
