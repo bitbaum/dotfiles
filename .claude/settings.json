@@ -1,4 +1,14 @@
 {
+  "permissions": {
+    "allow": [
+      "Bash(*)",
+      "Edit(*)",
+      "Write(*)",
+      "Read(*)",
+      "Glob(*)",
+      "Grep(*)"
+    ]
+  },
   "hooks": {
     "Notification": [
       {
@@ -18,7 +28,7 @@
           {
             "type": "command",
             "command": "/home/g/.claude/hooks/stop.sh",
-            "timeout": 120
+            "timeout": 150
           }
         ]
       }
@@ -49,5 +59,6 @@
   },
   "autoUpdatesChannel": "stable",
   "editorMode": "vim",
-  "voiceEnabled": true
+  "voiceEnabled": true,
+  "model": "sonnet"
 }
