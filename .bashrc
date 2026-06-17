@@ -380,16 +380,25 @@ claude() {
 
     echo "$PROJECT|$(date +%s)|$(pwd)" > "$SESSION_FILE"
 
-    # Strategy 0 tab identity: write focused tab name to /tmp so hooks can
-    # resolve the tab instantly without process-tree walking (lib.sh Strategy 0).
-    local _tab
-    _tab=$(zellij action dump-layout 2>/dev/null \
-      | grep 'focus=true' | grep 'tab name=' \
-      | sed 's/.*tab name="\([^"]*\)".*/\1/' | head -1)
-    [ -n "$_tab" ] && printf '%s' "$_tab" > "/tmp/claude-tab-$$"
+    # Write tab identity keyed by ZELLIJ_PANE_ID so Claude can detect its project
+    # even after context-limit continuations (which don't re-run this wrapper).
+    if [ -n "$ZELLIJ_PANE_ID" ]; then
+        local _tab
+        _tab=$(zellij action dump-layout 2>/dev/null \
+               | grep 'focus=true' \
+               | grep 'tab name=' \
+               | sed 's/.*tab name="\([^"]*\)".*/\1/' \
+               | head -1)
+        [ -n "$_tab" ] && printf '%s' "$_tab" > "/tmp/claude-pane-${ZELLIJ_PANE_ID}"
+
+        # Record which monitor the cursor is on right now — cursor is in the terminal
+        # at invocation time, so this is the terminal's screen. beacon.py reads this.
+        python3 "$HOME/dev/cockpit/scripts/record-terminal-screen.py" \
+            "${ZELLIJ_PANE_ID}" 2>/dev/null &
+    fi
 
     command claude "$@"
-    rm -f "/tmp/claude-tab-$$"
+    rm -f "/tmp/claude-pane-${ZELLIJ_PANE_ID}" "/tmp/claude-screen-${ZELLIJ_PANE_ID}"
 }
 
 codex() {
@@ -404,3 +413,153 @@ cockpit() {
 
 # Secrets (passwords, tokens) — loaded from .env, which is gitignored
 [ -f "$HOME/.env" ] && source "$HOME/.env"
+
+# --- Agent Orchestration Wrappers ---
+_agent_pre_launch() {
+    _agent_cd_from_tab_if_home || true
+    if [ -n "$ZELLIJ_PANE_ID" ]; then
+        local _tab
+        _tab=$(zellij action dump-layout 2>/dev/null | grep 'focus=true' | grep 'tab name=' | sed 's/.*tab name="\([^"]*\)".*/\1/' | head -1)
+        if [ -n "$_tab" ]; then
+            printf '%s' "$_tab" > "/tmp/agent-tab-$$"
+            printf '%s' "$_tab" > "/tmp/claude-tab-$$"
+            printf '%s' "$_tab" > "/tmp/claude-pane-${ZELLIJ_PANE_ID}"
+        fi
+    fi
+}
+
+_agent_post_launch() {
+    # Keep shell PID -> tab mapping available after the agent exits so Stop/Notification
+    # hooks can resolve the exact originating tab even for projects with multiple aliases.
+    rm -f "/tmp/claude-pane-${ZELLIJ_PANE_ID}"
+
+    # Belt-and-suspenders: drop any leftover keep-awake power inhibitor for this
+    # pane. The Stop hook normally releases it per-turn and a watchdog covers hard
+    # kills; this guarantees cleanup on a normal exit too. See ~/.claude/hooks/keep-awake-*.sh
+    local _pf="/tmp/claude-inhibit-${ZELLIJ_PANE_ID}.pid"
+    if [ -f "$_pf" ]; then
+        local _hp; _hp=$(cat "$_pf" 2>/dev/null)
+        [ -n "$_hp" ] && { pkill -TERM -P "$_hp" 2>/dev/null; kill -TERM "$_hp" 2>/dev/null; }
+        rm -f "$_pf"
+    fi
+}
+
+gemini() {
+    _agent_pre_launch
+    local _status _next_prompt _start _elapsed
+    local -a _base_args
+    _base_args=("$@")
+
+    while true; do
+        _start=$(date +%s)
+        command gemini "${_base_args[@]}"
+        _status=$?
+        _elapsed=$(( $(date +%s) - _start ))
+
+        if [ ! -x "$HOME/dev/cockpit/scripts/agent-hook-bridge.sh" ]; then
+            _agent_post_launch
+            return $_status
+        fi
+
+        # Startup crash guard: don't fire beacon if gemini exited non-zero in <3s
+        if [ "$_status" -ne 0 ] && [ "$_elapsed" -lt 3 ]; then
+            _agent_post_launch
+            return $_status
+        fi
+
+        _next_prompt=$(
+            jq -nc --arg cwd "$PWD" '{cwd:$cwd}' \
+                | AGENT_BRIDGE_EMIT_PROMPT=1 "$HOME/dev/cockpit/scripts/agent-hook-bridge.sh" stop 2>>/tmp/agent-hooks.log
+        ) || _next_prompt=""
+
+        # Idle-spiral guard — see ~/.claude/bin/autopilot-needs-fire.
+        # Returns exit 1 when the project's session.md shows a no-op pattern
+        # AND no fire signals (working/critical-health/blocker/inbox/dirty
+        # tree/stale session) are pending. Skips the re-invocation rather
+        # than burning ~3k tokens on a no-op turn.
+        if [ -n "$_next_prompt" ] && [ -x "$HOME/.claude/bin/autopilot-needs-fire" ]; then
+            _project_slug=""
+            if [ -n "${ZELLIJ_PANE_ID:-}" ] && [ -f "/tmp/claude-pane-${ZELLIJ_PANE_ID}" ]; then
+                _project_slug=$(cat "/tmp/claude-pane-${ZELLIJ_PANE_ID}" 2>/dev/null)
+            fi
+            [ -z "$_project_slug" ] && _project_slug=$(basename "$PWD")
+            if ! "$HOME/.claude/bin/autopilot-needs-fire" "$_project_slug" 2>/dev/null; then
+                _agent_post_launch
+                return $_status
+            fi
+        fi
+
+        if [ -z "$_next_prompt" ]; then
+            _agent_post_launch
+            return $_status
+        fi
+
+        _base_args=("$_next_prompt")
+    done
+}
+
+# Override existing claude/codex to use agnostic tab resolution
+claude() {
+    _agent_pre_launch
+    command claude "$@"
+    _agent_post_launch
+}
+
+codex() {
+    _agent_pre_launch
+    local _status _next_prompt _start _elapsed
+    local -a _base_args
+    _base_args=("$@")
+
+    while true; do
+        _start=$(date +%s)
+        command codex --no-alt-screen "${_base_args[@]}"
+        _status=$?
+        _elapsed=$(( $(date +%s) - _start ))
+
+        if [ ! -x "$HOME/dev/cockpit/scripts/agent-hook-bridge.sh" ]; then
+            _agent_post_launch
+            return $_status
+        fi
+
+        # Startup crash guard: don't fire beacon if codex exited non-zero in <3s
+        if [ "$_status" -ne 0 ] && [ "$_elapsed" -lt 3 ]; then
+            _agent_post_launch
+            return $_status
+        fi
+
+        _next_prompt=$(
+            jq -nc --arg cwd "$PWD" '{cwd:$cwd}' \
+                | AGENT_BRIDGE_EMIT_PROMPT=1 "$HOME/dev/cockpit/scripts/agent-hook-bridge.sh" stop 2>>/tmp/agent-hooks.log
+        ) || _next_prompt=""
+
+        # Idle-spiral guard — see ~/.claude/bin/autopilot-needs-fire.
+        # Returns exit 1 when the project's session.md shows a no-op pattern
+        # AND no fire signals (working/critical-health/blocker/inbox/dirty
+        # tree/stale session) are pending. Skips the re-invocation rather
+        # than burning ~3k tokens on a no-op turn.
+        if [ -n "$_next_prompt" ] && [ -x "$HOME/.claude/bin/autopilot-needs-fire" ]; then
+            _project_slug=""
+            if [ -n "${ZELLIJ_PANE_ID:-}" ] && [ -f "/tmp/claude-pane-${ZELLIJ_PANE_ID}" ]; then
+                _project_slug=$(cat "/tmp/claude-pane-${ZELLIJ_PANE_ID}" 2>/dev/null)
+            fi
+            [ -z "$_project_slug" ] && _project_slug=$(basename "$PWD")
+            if ! "$HOME/.claude/bin/autopilot-needs-fire" "$_project_slug" 2>/dev/null; then
+                _agent_post_launch
+                return $_status
+            fi
+        fi
+
+        if [ -z "$_next_prompt" ]; then
+            _agent_post_launch
+            return $_status
+        fi
+
+        _base_args=("$_next_prompt")
+    done
+}
+
+# >>> grok installer >>>
+export PATH="$HOME/.grok/bin:$PATH"
+[[ -r "$HOME/.grok/completions/bash/grok.bash" ]] && source "$HOME/.grok/completions/bash/grok.bash"
+# <<< grok installer <<<

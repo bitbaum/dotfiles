@@ -27,6 +27,10 @@
         "hooks": [
           {
             "type": "command",
+            "command": "/home/g/.claude/hooks/keep-awake-release.sh"
+          },
+          {
+            "type": "command",
             "command": "/home/g/.claude/hooks/stop.sh",
             "timeout": 150
           }
@@ -55,10 +59,25 @@
           }
         ]
       }
+    ],
+    "UserPromptSubmit": [
+      {
+        "matcher": "",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "/home/g/.claude/hooks/keep-awake-acquire.sh"
+          },
+          {
+            "type": "command",
+            "command": "/home/g/.claude/hooks/fleet-user-prompt.sh"
+          }
+        ]
+      }
     ]
   },
   "autoUpdatesChannel": "stable",
   "editorMode": "vim",
-  "voiceEnabled": true,
-  "model": "sonnet"
+  "agentPushNotifEnabled": true,
+  "voiceEnabled": true
 }
