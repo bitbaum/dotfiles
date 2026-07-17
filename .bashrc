@@ -294,7 +294,13 @@ git-health() {
 # ═══════════════════════════════════════════════════
 # Zellij Auto-Attach
 # ═══════════════════════════════════════════════════
-if [ -z "${ZELLIJ:-}" ] && command -v zellij >/dev/null 2>&1; then
+# Only auto-attach for genuine human login terminals. Skip when:
+#   - already inside zellij ($ZELLIJ set), or
+#   - this is a programmatic `bash -c` launch ($BASH_EXECUTION_STRING set),
+#     e.g. the FleetCrown Fleet Runner spawning `bash -lic '... && claude'`
+#     for an owned PTY. Auto-launching zellij there hijacks the runner's PTY
+#     before Claude can own it, so injected prompts never reach Claude.
+if [ -z "${ZELLIJ:-}" ] && [ -z "${BASH_EXECUTION_STRING:-}" ] && command -v zellij >/dev/null 2>&1; then
     if zellij list-sessions -ns 2>/dev/null | grep -q .; then
         zellij attach
     else
@@ -501,7 +507,17 @@ gemini() {
 # Override existing claude/codex to use agnostic tab resolution
 claude() {
     _agent_pre_launch
-    command claude "$@"
+    # Hold an "idle" inhibitor for the duration of the session so active work
+    # won't idle-suspend on battery. Only the idle timer is inhibited -- a
+    # lid-close still suspends, so bagging the laptop always sleeps. Falls back
+    # cleanly if systemd-inhibit or the resolved binary is missing.
+    local _claude_bin
+    _claude_bin=$(type -P claude)
+    if [ -n "$_claude_bin" ] && command -v systemd-inhibit >/dev/null 2>&1; then
+        systemd-inhibit --what=idle --who=claude --why="Active coding session" "$_claude_bin" "$@"
+    else
+        command claude "$@"
+    fi
     _agent_post_launch
 }
 
@@ -563,3 +579,7 @@ codex() {
 export PATH="$HOME/.grok/bin:$PATH"
 [[ -r "$HOME/.grok/completions/bash/grok.bash" ]] && source "$HOME/.grok/completions/bash/grok.bash"
 # <<< grok installer <<<
+
+
+# Added by Antigravity CLI installer
+export PATH="/home/g/.local/bin:$PATH"

@@ -6,9 +6,20 @@
       "Write(*)",
       "Read(*)",
       "Glob(*)",
-      "Grep(*)"
+      "Grep(*)",
+      "Bash",
+      "Edit",
+      "Write",
+      "Read",
+      "Glob",
+      "Grep",
+      "WebFetch",
+      "WebSearch",
+      "MultiEdit",
+      "TodoWrite"
     ]
   },
+  "model": "claude-fable-5[1m]",
   "hooks": {
     "Notification": [
       {
@@ -77,6 +88,7 @@
     ]
   },
   "autoUpdatesChannel": "stable",
+  "tui": "fullscreen",
   "editorMode": "vim",
   "agentPushNotifEnabled": true,
   "voiceEnabled": true
