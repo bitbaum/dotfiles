@@ -107,6 +107,36 @@ components/      → UI rendering (no business logic)
 hooks/           → Data fetching, state management
 ```
 
+### From Truth #4 (automate the mechanical → never fix it twice)
+
+**The Never-Twice Rule.** The second time you (or an agent) fix an instance of a
+bug, you do not fix the third — you write the automation that ends the class:
+
+```
+1st time: fix it
+2nd time: fix it, and notice it's a pattern
+3rd time: FORBIDDEN — the rule/check/routine should already exist
+```
+
+A one-off fix costs tokens every recurrence and misses cases; a lint rule, CI
+check, codemod, or CLAUDE.md rule closes the class *forever* at zero future cost.
+Ask it as the last question of every fix: **"am I fixing this, or teaching the
+machine to fix it forever?"** The first is 1x; the second compounds.
+
+Concrete forms, cheapest first:
+- Recurring code mistake → **ESLint rule** (or `no-restricted-syntax` / a grep gate).
+- "Don't do X in this repo" knowledge → **CLAUDE.md rule** + a check that enforces it.
+- Repeated manual sequence → a **script** or **skill**, named and committed.
+- A whole class of regressions → a **test** that fails on it, wired into CI.
+- No silent caps: if you must defer automating a class, say so in the fix — an
+  un-encoded "I'll remember" is exactly the knowledge-in-a-head this rule targets.
+
+**One definition of "verified".** Each repo exposes a `verify` script
+(lint + typecheck + test) that CI calls verbatim — the check bundle is defined
+once, run identically locally and on the shared branch. Green `verify` locally ⇒
+green CI. Run it before declaring any change done. (Golden templates:
+`dotfiles/templates/ci/`.)
+
 ### From Truth #5 (complexity compounds → simplicity scales)
 
 **KISS (Keep It Simple, Stupid)**
@@ -498,6 +528,18 @@ If it fails: run `vercel logs <url>` to read the error, fix, push again. **Never
 - Zero context switching required from the user
 - Go fix failing CI tests without being told how
 - Escalate when the fix implies a design decision that should involve the user
+
+### Agent Prompt System
+
+All prompts in `~/.config/agent-prompts.json` follow the **SPACE framework** documented at `~/.config/prompts-system.md`. When writing or editing a prompt:
+
+- **S — State**: specify what context the agent must fetch (git log, tsc, grep) beyond the always-loaded session + CLAUDE.md
+- **P — Priority**: for autonomous prompts, include a numbered triage order
+- **A — Action**: one concrete, scoped action — not "improve things"
+- **C — Constraints**: at least one explicit out-of-bounds ("no new features", "fix top 3 only")
+- **E — Exit**: never duplicate the handoff block — `buildPromptWithSession` appends it automatically
+
+Anti-patterns: role-playing preambles, "Follow CLAUDE.md" (noise — it's always loaded), "zero warnings" (unachievable), analysis-only steps that produce a list but no code change.
 
 ### Uncertainty Handling
 
