@@ -1,6 +1,7 @@
-// Project workspace layout — shell panes that survive restart
+// Project workspace layout — shell panes that survive restart.
 // Each tab opens a shell in the project directory.
-// Type 'claude' to start Claude Code in any tab.
+// Type 'codex' or 'claude' to start an agent in any project tab.
+// Type 'cockpit' in the Cockpit tab to start the web UI.
 
 layout {
     default_tab_template {
@@ -30,6 +31,12 @@ layout {
     }
     tab name="OpenClaw" {
         pane cwd="/home/g/dev/openclaw"
+    }
+    tab name="Cockpit" {
+        pane cwd="/home/g/dev/cockpit"
+    }
+    tab name="Dotfiles" {
+        pane cwd="/home/g/dev/dotfiles"
     }
     tab name="Scratch" focus=true {
         pane cwd="/home/g"

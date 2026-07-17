@@ -8,6 +8,11 @@ ui {
 // Keep scrollback in terminal manageable; use Zellij scrollback/search
 scrollback_lines 10000
 
+// Disable session resurrection. Zellij 0.43.x hits an unsupported "creation time"
+// call on Linux and retries the read every ~500ms, hammering async-std's blocking
+// thread pool. Under load that pool fails to spawn (EAGAIN) and the server panics.
+session_serialization false
+
 // After crash, zellij discovers the deepest subprocess (playwright-mcp, ref-tools-mcp)
 // instead of the parent shell. Replace ALL resurrected commands with bash so panes
 // get working shells. Claude's memory handles session context, not zellij.

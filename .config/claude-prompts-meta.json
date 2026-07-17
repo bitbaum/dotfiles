@@ -1,0 +1,15 @@
+[
+  {"key":"next_best",    "slot":1,  "icon":"⚡",  "label":"Next best task",      "style":"primary","category":"dev"},
+  {"key":"test_and_fix", "slot":2,  "icon":"🧪",  "label":"Test & fix",           "style":"action", "category":"dev"},
+  {"key":"commit_push",  "slot":3,  "icon":"📦",  "label":"Commit & push",        "style":"action", "category":"ship"},
+  {"key":"quality",      "slot":4,  "icon":"💎",  "label":"Code quality pass",    "style":"action", "category":"dev"},
+  {"key":"full_audit",   "slot":5,  "icon":"🔍",  "label":"Full audit + plan",    "style":"action", "category":"ship"},
+  {"key":"mission",      "slot":6,  "icon":"🎯",  "label":"Mission alignment",    "style":"action", "category":"vision"},
+  {"key":"browser_test", "slot":7,  "icon":"🌐",  "label":"Browser test",         "style":"more",   "category":"dev"},
+  {"key":"deploy_check", "slot":8,  "icon":"✅",  "label":"Deploy checklist",     "style":"more",   "category":"ship"},
+  {"key":"product",      "slot":9,  "icon":"🏗",  "label":"Product thinking",     "style":"more",   "category":"vision"},
+  {"key":"ux_review",    "slot":10, "icon":"🎨",  "label":"UX / design review",   "style":"more",   "category":"vision"},
+  {"key":"marketing",    "slot":11, "icon":"📣",  "label":"Marketing copy",        "style":"more",   "category":"content"},
+  {"key":"social",         "slot":12, "icon":"📱",  "label":"Social media content", "style":"more",   "category":"content"},
+  {"key":"close_session",  "slot":13, "icon":"🛌",  "label":"Close session",        "style":"more",   "category":"ship"}
+]
