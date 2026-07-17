@@ -1,0 +1,58 @@
+# GOLDEN CI FLOOR — pnpm repos. See templates/ci/README.md.
+# Copy to .github/workflows/ci.yml and adjust step commands to the repo's scripts.
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+  workflow_dispatch:
+
+# A newer push makes the older run obsolete — don't waste minutes finishing it.
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  verify:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: pnpm/action-setup@v4
+        with:
+          # Match the pnpm major the repo uses locally. pnpm 9 errors "packages
+          # field missing or empty" on a settings-only pnpm-workspace.yaml (no
+          # `packages:` key); pnpm 10+ treats `packages` as optional.
+          version: 11
+
+      - uses: actions/setup-node@v4
+        with:
+          # pnpm 11 requires Node >= 22.13 (it imports node:sqlite). Keep the
+          # pnpm major above and this Node major in lockstep.
+          node-version: 22
+          cache: pnpm
+
+      - name: Install
+        run: pnpm install --frozen-lockfile
+
+      - name: Lint
+        run: pnpm run lint
+
+      - name: Typecheck
+        # Use the repo's `typecheck` script if it has one, else tsc directly.
+        run: pnpm run typecheck || pnpm exec tsc --noEmit
+
+      - name: Test
+        # The suite you already wrote — now it actually runs on every PR.
+        run: pnpm run test
+
+      - name: Build
+        # Hermetic compile: proves the shipped artifact builds. Placeholder DB
+        # URL covers tools (drizzle-kit/config) that read the var without
+        # connecting. Real secrets are never needed to compile.
+        env:
+          DATABASE_URL: postgres://ci:ci@localhost:5432/ci
+        run: pnpm run build
