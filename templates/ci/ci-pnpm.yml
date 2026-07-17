@@ -38,16 +38,11 @@ jobs:
       - name: Install
         run: pnpm install --frozen-lockfile
 
-      - name: Lint
-        run: pnpm run lint
-
-      - name: Typecheck
-        # Use the repo's `typecheck` script if it has one, else tsc directly.
-        run: pnpm run typecheck || pnpm exec tsc --noEmit
-
-      - name: Test
-        # The suite you already wrote — now it actually runs on every PR.
-        run: pnpm run test
+      # SSOT: "verified" is defined ONCE, in package.json `verify`
+      # (= lint + typecheck + test), and run identically here and locally via
+      # `pnpm run verify`. Change the checks in one place, not two.
+      - name: Verify
+        run: pnpm run verify
 
       - name: Build
         # Hermetic compile: proves the shipped artifact builds. Placeholder DB

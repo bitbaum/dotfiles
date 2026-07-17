@@ -29,16 +29,11 @@ jobs:
       - name: Install
         run: npm ci
 
-      - name: Lint
-        run: npm run lint
-
-      - name: Typecheck
-        # Use the repo's `type-check`/`typecheck` script if it has one, else tsc.
-        run: npm run type-check --if-present && npx tsc --noEmit
-
-      - name: Test
-        # The suite you already wrote — now it actually runs on every PR.
-        run: npm run test
+      # SSOT: "verified" is defined ONCE, in package.json `verify`
+      # (= lint + typecheck + test), and run identically here and locally via
+      # `npm run verify`. Change the checks in one place, not two.
+      - name: Verify
+        run: npm run verify
 
       - name: Build
         # Hermetic compile: proves the shipped artifact builds. Placeholder DB
