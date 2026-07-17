@@ -34,6 +34,31 @@ the ladder below.
 - Commit on a branch and open a PR — the `pull_request` trigger runs the whole
   gate on the PR itself, so you *see it go green before it ever touches main*.
 
+## The local mirror: a `verify` script (Rung 3 — close the loop)
+
+CI protects the *shared* branch, asynchronously, after a push. That still leaves
+a human running the app by hand to check a change before it ships. The `verify`
+script removes that human: it gives an agent the **same signal, synchronously,
+in one command, before pushing.**
+
+Every repo exposes one script with an identical name and contract:
+
+```jsonc
+// package.json — mirrors the CI floor's HERMETIC gates
+"verify": "<pm> run lint && <pm> run typecheck && <pm> run test"
+```
+
+- Same checks as CI (minus the non-hermetic build/e2e) → **green `verify` locally
+  ⇒ green CI.** No surprises after push.
+- Uniform name across every repo → an agent (or a new contributor) runs the same
+  command everywhere and never has to learn a per-repo incantation.
+- The reflex is encoded in each repo's CLAUDE.md: *before declaring a change done,
+  run `verify` and read the result.* That is what takes the prompter out of the
+  validate loop — the agent sees red and self-corrects in the same turn.
+
+Add a `typecheck` script (`tsc --noEmit`) to any repo missing one so `verify` is
+uniform. Deeper "drive the running app" smokes are a per-repo upgrade on top.
+
 ## The maturity ladder (add per-repo as the secrets/infra appear)
 
 The floor is rung 0. Reach for the next rung when the repo earns it — the
