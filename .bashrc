@@ -507,6 +507,9 @@ gemini() {
 # Override existing claude/codex to use agnostic tab resolution
 claude() {
     _agent_pre_launch
+    # Isolate into a worktree if this repo's main checkout is already in use by
+    # another live session (no-op for a solo session). See _claude_autoworktree_*.
+    _claude_autoworktree_enter
     # Hold an "idle" inhibitor for the duration of the session so active work
     # won't idle-suspend on battery. Only the idle timer is inhibited -- a
     # lid-close still suspends, so bagging the laptop always sleeps. Falls back
@@ -518,6 +521,7 @@ claude() {
     else
         command claude "$@"
     fi
+    _claude_autoworktree_leave
     _agent_post_launch
 }
 
@@ -583,3 +587,55 @@ export PATH="$HOME/.grok/bin:$PATH"
 
 # Added by Antigravity CLI installer
 export PATH="/home/g/.local/bin:$PATH"
+
+# Expose ~/.claude/bin (wt worktree helper + autopilot tools) on PATH.
+# Additive; safe to remove. See `wt --help` for isolated-worktree workflow.
+case ":$PATH:" in
+  *":$HOME/.claude/bin:"*) ;;
+  *) export PATH="$HOME/.claude/bin:$PATH" ;;
+esac
+
+# ── Auto-worktree: isolate concurrent same-repo sessions ──────────────────────
+# If another LIVE `claude` session already holds this repo's MAIN checkout, move
+# this session into a fresh git worktree so the two never collide (branch swaps,
+# shared index, shared .next). A solo session is unchanged — it just claims the
+# main checkout. Opt out for one session with:  CLAUDE_NO_AUTOWT=1 claude
+# The lock keys on the main checkout's path and stores the holding shell's PID,
+# so a crashed session's stale lock is detected (kill -0) and taken over.
+_CLAUDE_WT_LOCK=""
+_claude_autoworktree_enter() {
+    [ -n "${CLAUDE_NO_AUTOWT:-}" ] && return 0
+    command -v git >/dev/null 2>&1 || return 0
+    local root
+    root=$(git rev-parse --show-toplevel 2>/dev/null) || return 0
+    # A linked worktree has a .git FILE (not dir) → already isolated, nothing to do.
+    [ -f "$root/.git" ] && return 0
+
+    local lockdir="/tmp/claude-wt-locks"
+    mkdir -p "$lockdir" 2>/dev/null || return 0
+    local lock; lock="$lockdir/$(printf '%s' "$root" | md5sum | cut -d' ' -f1)"
+
+    if [ -f "$lock" ]; then
+        local pid; pid=$(cat "$lock" 2>/dev/null)
+        if [ -n "$pid" ] && kill -0 "$pid" 2>/dev/null; then
+            # Contention → spin up an isolated worktree and move into it.
+            local task wtdir
+            task="auto-$(date +%H%M%S)-$$"
+            wtdir="$(dirname "$root")/$(basename "$root")-wt/$task"
+            if "$HOME/.claude/bin/wt" "$task" >/dev/null 2>&1 && cd "$wtdir" 2>/dev/null; then
+                export CLAUDE_WORKTREE_DIR="$wtdir"
+                echo "  ⚠ $(basename "$root") main checkout is busy (pid $pid) — isolated this session:"
+                echo "    → $wtdir  (branch wip/$task)"
+                return 0
+            fi
+            echo "  ⚠ auto-worktree failed; staying in shared checkout — watch for collisions"
+            return 0
+        fi
+    fi
+    # Free or stale → claim the main checkout for this session.
+    printf '%s' "$$" > "$lock" 2>/dev/null && _CLAUDE_WT_LOCK="$lock"
+}
+_claude_autoworktree_leave() {
+    [ -n "$_CLAUDE_WT_LOCK" ] && rm -f "$_CLAUDE_WT_LOCK" 2>/dev/null
+    _CLAUDE_WT_LOCK=""
+}
