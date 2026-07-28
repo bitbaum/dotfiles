@@ -454,6 +454,28 @@ Use for:
 
 ## Git & Documentation
 
+### Commit Policy — commit proactively, don't wait to be asked
+
+**This overrides the default "commit only when the user asks" behavior.** In a
+multi-session, multi-repo workflow an uncommitted working tree is the hazard, not
+the fix: parallel sessions clobber each other's `git add`, half-done trees
+produce merge conflicts, and "clean repo" stops being true. So:
+
+- **Commit each logical unit of work as you finish it**, without being asked.
+  A green, self-contained change belongs in a commit, not left dirty in the tree.
+- **Never commit directly to the default branch.** If on `main`/`master`, create
+  a branch first (the harness enforces this — keep it).
+- **Run the repo's verify/pre-commit gate before committing** (lint + typecheck +
+  test). A broken commit is worse than an uncommitted change.
+- **Push feature branches freely** once coherent and verified — that's low-risk
+  and reversible, and it's how work survives a session dying.
+- **Still ask / confirm before outward-facing or hard-to-reverse steps:** merging
+  a PR, pushing to the default branch directly, force-pushing, or anything that
+  publishes to users. Committing and pushing a feature branch is not one of these.
+
+Net effect: trees stay clean and work is never stranded, but nothing merges to
+`main` or ships without a deliberate step.
+
 ### Commit Format
 
 ```
@@ -502,24 +524,36 @@ Types: feat, fix, refactor, perf, test, docs, chore
 - Ask yourself: "Would a staff engineer approve this?"
 - Run tests, check logs, demonstrate correctness
 
-### Deployment Monitoring (Vercel projects)
+### Deployment Monitoring (self-hosted on Hetzner "bitbaum")
 
-After every `git push` on a Vercel project, monitor the deployment to completion before reporting done. Use the Monitor tool to stream status:
+Every studio app is self-hosted on the single Hetzner box "bitbaum"
+(167.233.22.31) behind Caddy — **there is no Vercel**. Deploys are push-to-main
+→ GitHub Actions (a `deploy-selfhost.yml`-style workflow) → build → rsync to
+`/opt/<app>/app` → `systemctl restart <app>-app`. After every `git push` to a
+deploy branch, monitor the run to completion before reporting done:
 
 ```bash
-prev=$(vercel ls --prod 2>/dev/null | grep -v "^>" | grep -v "Age" | head -1 | awk '{print $3}')
-while true; do
-  row=$(vercel ls --prod 2>/dev/null | grep -v "^>" | grep -v "Age" | head -1)
-  url=$(echo "$row" | awk '{print $3}')
-  status=$(echo "$row" | awk '{print $5}')
-  [ "$url" != "$prev" ] && echo "DEPLOY $status: $url"
-  echo "$status" | grep -q "^Ready$" && echo "✓ live: $url" && exit 0
-  echo "$status" | grep -qiE "Error|Failed|Canceled" && echo "✗ FAILED: $url" && exit 1
-  sleep 8
-done
+# gh run list can return the PREVIOUS run right after a push — filter by the SHA
+# you just pushed, and give Actions a moment to register it.
+sleep 6
+sha=$(git rev-parse HEAD)
+run=$(gh run list --limit 10 --json databaseId,headSha \
+  --jq "map(select(.headSha==\"$sha\"))[0].databaseId")
+[ -n "$run" ] && gh run watch "$run" --exit-status && echo "✓ CI/deploy green" \
+  || { echo "✗ deploy failed"; gh run view "$run" --log-failed | tail -40; }
 ```
 
-If it fails: run `vercel logs <url>` to read the error, fix, push again. **Never tell the user a feature is deployed until Vercel shows Ready.**
+Then confirm the app actually came back up — CI green ≠ live:
+
+```bash
+curl -fsS https://<app>.orangecat.ch/api/health && echo "  ✓ live"
+```
+
+If it fails: read the failed job logs (`gh run view <run> --log-failed`), or ssh
+`ubuntu@167.233.22.31` and check `journalctl -u <app>-app -n 50` / `systemctl
+status <app>-app`. Fix, push again. **Never tell the user a feature is deployed
+until CI is green AND the health check returns 200.** (Local warm builds can take
+~8 min, cold 30+ — budget for it; don't declare done on push.)
 
 ### Autonomous Bug Fixing
 
