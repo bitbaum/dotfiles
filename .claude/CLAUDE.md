@@ -505,24 +505,15 @@ Types: feat, fix, refactor, perf, test, docs, chore
 
 ### Plan Mode
 
-- Enter plan mode for ANY non-trivial task (3+ steps or architectural decisions)
+- Enter plan mode when requirements are ambiguous or the change is architectural
 - If something goes sideways, STOP and re-plan immediately — don't keep pushing
-- Use plan mode for verification steps, not just building
 - Write detailed specs upfront to reduce ambiguity
 
 ### Subagent Strategy
 
-- Use subagents liberally to keep main context window clean
-- Offload research, exploration, and parallel analysis to subagents
-- For complex problems, throw more compute at it via subagents
-- One task per subagent for focused execution
-
-### Verification Before Done
-
-- Never mark a task complete without proving it works
-- Diff behavior between main and your changes when relevant
-- Ask yourself: "Would a staff engineer approve this?"
-- Run tests, check logs, demonstrate correctness
+- Delegate to a subagent only for large tasks that are genuinely independent and parallelizable (e.g. a wide multi-file investigation)
+- Do not delegate work you can finish yourself in a handful of tool calls, and do not use subagents to verify or double-check your own work
+- Offload noisy research/exploration to subagents to keep the main context clean
 
 ### Deployment Monitoring (self-hosted on Hetzner "bitbaum")
 
