@@ -19,7 +19,7 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 20
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
 
       - uses: pnpm/action-setup@v4
         with:
@@ -28,7 +28,7 @@ jobs:
           # `packages:` key); pnpm 10+ treats `packages` as optional.
           version: 11
 
-      - uses: actions/setup-node@v4
+      - uses: actions/setup-node@v7
         with:
           # pnpm 11 requires Node >= 22.13 (it imports node:sqlite). Keep the
           # pnpm major above and this Node major in lockstep.
