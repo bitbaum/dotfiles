@@ -1,0 +1,75 @@
+# The template repo defends every other repo's branch. Until now it defended
+# none of its own — no .github/ at all — and it drifted: it still handed out
+# actions/checkout@v4 and setup-node@v4 sixteen days after the fleet moved to
+# v7, so every fresh copy re-introduced the old versions. A source of truth
+# that nothing checks is just a file.
+name: CI
+
+on:
+  push:
+    branches: [master]
+  pull_request:
+    branches: [master]
+  workflow_dispatch:
+
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  verify:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v7
+
+      # Shell must parse. install.sh is what lands on a new machine; a syntax
+      # error there is discovered at the worst possible moment.
+      - name: Shell syntax
+        run: |
+          set -euo pipefail
+          found=0
+          while IFS= read -r f; do
+            found=$((found + 1))
+            bash -n "$f"
+          done < <(find . -name '*.sh' -not -path './.git/*')
+          echo "shell syntax: ok ($found script(s) checked)"
+
+      # Every CI template must be valid YAML — a broken template is copied
+      # into a repo and fails there, far from here.
+      - name: Templates are valid YAML
+        run: |
+          set -euo pipefail
+          found=0
+          for f in templates/ci/*.yml; do
+            [ -e "$f" ] || continue
+            found=$((found + 1))
+            python3 -c "import yaml,sys; yaml.safe_load(open(sys.argv[1]))" "$f"
+          done
+          [ "$found" -gt 0 ] || { echo "no CI templates found — did they move?" >&2; exit 1; }
+          echo "templates parse: ok ($found template(s))"
+
+      # The template's whole premise is that "verified" is defined ONCE, in
+      # package.json `verify`, and CI calls it verbatim. If a template stops
+      # doing that, the premise is gone and nobody would notice.
+      - name: Templates still call the verify SSOT
+        run: |
+          set -euo pipefail
+          for f in templates/ci/ci-npm.yml templates/ci/ci-pnpm.yml; do
+            grep -q 'run verify' "$f" || {
+              echo "$f no longer calls the verify SSOT — the template's core promise" >&2
+              exit 1
+            }
+          done
+          echo "verify SSOT: present in both templates"
+
+      # Drift guard. The fleet is on v7; templates handing out v4 is exactly
+      # how this repo fell behind the repos it governs.
+      - name: No stale action versions
+        run: |
+          set -euo pipefail
+          if grep -rnE 'actions/(checkout|setup-node)@v[1-6]\b' templates/; then
+            echo "stale action version in a template — the fleet is on v7" >&2
+            exit 1
+          fi
+          echo "action versions: no stale pins"
