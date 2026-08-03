@@ -580,24 +580,16 @@ A memory MCP server is available. Use it to persist context across sessions so w
 
 **Core principle: ground truth first, memory second.** Git state is always accurate. Memory may be stale. Never trust memory alone.
 
-- **Step 1: Detect project from zellij tab** (if `$HOME` and `ZELLIJ` is set):
-  1. **Check the pane identity file** — the `claude()` bash wrapper writes `/tmp/claude-pane-<ZELLIJ_PANE_ID>` at launch time, keyed by pane ID (not PID) so it survives context-limit continuations. Run:
-     ```bash
-     [ -n "$ZELLIJ_PANE_ID" ] && [ -f "/tmp/claude-pane-${ZELLIJ_PANE_ID}" ] \
-       && cat "/tmp/claude-pane-${ZELLIJ_PANE_ID}"
-     ```
-     If this prints a tab name, use it — it's the most reliable source.
+- **Step 1: Establish the project — `cwd` is the answer.** The launcher already resolved it, so `pwd` IS the project. Nothing else needs detecting. Only when `cwd` is bare `$HOME` is the project genuinely unknown — then ask the user.
 
-  2. **If no file exists** — the pane file is written at `claude()` launch time and deleted when `claude` exits. A missing file means either (a) first launch after the fix was deployed, or (b) session was killed without cleanup. Fall back to `dump-layout` ONLY if you are confident the user is still focused on their tab (e.g., they just ran a command):
-     ```bash
-     zellij action dump-layout 2>/dev/null \
-       | grep 'focus=true' | grep 'tab name=' \
-       | sed 's/.*tab name="\([^"]*\)".*/\1/' | head -1
-     ```
-     **Caveat**: this gives the CURRENTLY VIEWED tab, not necessarily the tab running Claude. If the user switched tabs since launching, this will be wrong. When uncertain, ask the user: "Which project are we working on?"
+  **Do NOT detect the project from the zellij tab.** That mechanism is retired: tabs are no longer renamed per project (they read `Tab #1`), one pane now hosts many concurrent sessions so `ZELLIJ_PANE_ID` is not unique, and `/tmp/claude-pane-*` is deleted by whichever of them exits first. `~/.config/claude-projects.conf` is legacy — do not consult it.
 
-  3. Clean the tab name: strip trailing `$` and whitespace, then match case-insensitively against `~/.config/claude-projects.conf` (format: `tab_name|directory`)
-  4. If found and directory exists, `cd` to it and tell the user: "Detected project: X (from zellij tab)"
+  **Many sessions run concurrently** (commonly 5–10, often several in the same repo). Every live session self-registers at `~/.claude/sessions/<pid>.json`. That registry is the SSOT for what else is running:
+  ```bash
+  jq -r 'select(.status!=null) | "\(.status)\t\(.kind)\t\(.cwd)\t\(.name)"' \
+    ~/.claude/sessions/*.json 2>/dev/null | sort
+  ```
+  Check it before starting **wide-blast-radius work** (a type layer, a shared config, a migration). Not for file conflicts — `_claude_autoworktree_enter` already isolates each session into its own worktree automatically. Check it for *semantic* collisions, which worktrees do **not** prevent and which have bitten this fleet repeatedly: two sessions fixing the same bug on different branches, or two sessions choosing the same migration timestamp.
 
 - **Step 2: Inspect ground truth** (run in parallel once in the project directory):
   ```bash
@@ -607,11 +599,11 @@ A memory MCP server is available. Use it to persist context across sessions so w
   ```
   This is the authoritative picture of where the project actually is.
 
-- **Step 3: Load memory context** (ALWAYS, even if tab detection failed):
+- **Step 3: Load memory context** (ALWAYS):
   1. Call `mcp__memory__search_nodes` with query `"session:"` to find ALL `session:*` entities
-  2. If tab matched a project: call `mcp__memory__open_nodes` with `["session:<project>", "project:<project>"]`
-  3. If tab did NOT match but `session:*` entities exist: list them and ask the user which to continue (or which project to work on)
-  4. If tab did NOT match and no sessions exist: ask the user which project to work on
+  2. If `cwd` identified a project: call `mcp__memory__open_nodes` with `["session:<project>", "project:<project>"]`
+  3. If `cwd` is `$HOME` but `session:*` entities exist: list them and ask the user which to continue (or which project to work on)
+  4. If `cwd` is `$HOME` and no sessions exist: ask the user which project to work on
   5. **Cross-reference memory against git**: if they conflict, trust git. Update stale memory if needed.
 
 - **Step 4: Synthesize and propose** — assess from multiple angles then present a brief:
@@ -621,7 +613,7 @@ A memory MCP server is available. Use it to persist context across sessions so w
   - One clear recommended next move
   - Keep it concise — the user wants to get moving, not read a report
 
-- **Step 5: Bootstrap new project** if tab matched but `project:<name>` entity does NOT exist in memory:
+- **Step 5: Bootstrap new project** if `cwd` identified a project but `project:<name>` entity does NOT exist in memory:
   - Tell the user: "New project detected — no memory entity found for `<name>`. I'll create one so future sessions restore properly."
   - Read the project's CLAUDE.md (if it exists) and package.json to extract stack/purpose
   - Create `project:<name>` entity immediately with: purpose, stack, repo path, and `currentState: New project, no prior work recorded.`
@@ -661,13 +653,14 @@ pattern:<project>:<name>    → codebase patterns to follow
 
 ### Project isolation during continuation prompts
 
-**CRITICAL**: The user reuses a single session-continuation template across all projects. The template often contains a hardcoded project name that does not match the current tab. **Always substitute the tab-detected project name.**
+**CRITICAL**: The user reuses a single session-continuation template across all projects. The template often contains a hardcoded project name that does not match where you actually are. **Always substitute the project implied by `cwd`.**
 
 Rules:
-- Session file to create/update = `/home/g/.claude/sessions/<tab-project>.md` — always derived from the zellij tab, never from the project name in the user's prompt.
-- If the prompt says "create Cockpit.md" but the tab is OrangeCat → create/update `OrangeCat.md` instead.
-- Never write code to or read files from a project directory that does not match the detected tab. If a prompt references another project's directory or session, ignore that reference and stay in the tab-detected project.
-- If you catch a mismatch (prompt project ≠ tab project), note it once: "Prompt referenced `<X>.md` but this is the `<Y>` tab — updating `<Y>.md`." Then continue without asking.
+- Session file to create/update = `/home/g/.claude/sessions/<project>.md`, where `<project>` derives from `cwd` — never from the project name in the user's prompt.
+- Derive `<project>` from the **repo root**, not the worktree: in `~/dev/orangecat/.claude/worktrees/foo` the project is `OrangeCat`, not `foo`. Use `basename "$(git rev-parse --show-toplevel)"` and match it case-insensitively against the existing `sessions/*.md` names.
+- If the prompt says "create Cockpit.md" but `cwd` is under `~/dev/orangecat` → create/update `OrangeCat.md` instead.
+- Never write code to or read files from a project directory other than the one `cwd` is in. If a prompt references another project's directory or session, ignore that reference and stay put.
+- If you catch a mismatch (prompt project ≠ `cwd` project), note it once: "Prompt referenced `<X>.md` but cwd is `<Y>` — updating `<Y>.md`." Then continue without asking.
 
 ---
 
