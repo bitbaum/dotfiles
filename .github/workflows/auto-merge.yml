@@ -28,6 +28,18 @@ permissions:
   contents: write # merge the PR
   pull-requests: write # read PR state, delete the branch
   actions: write # dispatch the re-arm workflows
+  # Only load-bearing on a PRIVATE repo — which is exactly why this was missing
+  # for so long. The sweep asks for statusCheckRollup to decide whether a PR is
+  # green; a public repo answers that with no explicit scope, so this file was
+  # copied into ~20 repos and worked in every one of them. The first private
+  # repo to run it (ivy-portal) failed on every single sweep with
+  #   GraphQL: Resource not accessible by integration
+  #     (repository.pullRequests.nodes.0.statusCheckRollup...)
+  # and merged nothing, ever. Keep these two lines when copying this file: a
+  # repo that merges nothing is indistinguishable from a repo with nothing to
+  # merge, so the next occurrence would also go unnoticed.
+  checks: read # check-run conclusions (CI jobs)
+  statuses: read # commit statuses (external reporters)
 
 # Never let two sweeps merge concurrently — they would race on the same PRs.
 concurrency:
