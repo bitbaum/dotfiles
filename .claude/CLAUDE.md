@@ -469,12 +469,21 @@ produce merge conflicts, and "clean repo" stops being true. So:
   test). A broken commit is worse than an uncommitted change.
 - **Push feature branches freely** once coherent and verified — that's low-risk
   and reversible, and it's how work survives a session dying.
-- **Still ask / confirm before outward-facing or hard-to-reverse steps:** merging
-  a PR, pushing to the default branch directly, force-pushing, or anything that
-  publishes to users. Committing and pushing a feature branch is not one of these.
+- **Merge your own green PRs without asking.** A CI-green, non-draft PR on a
+  feature branch in George's own repos is already the deliberate step — you
+  reviewed the diff, CI verified it. Merge it, watch the deploy, verify live
+  (health check, not just green CI). George never opens GitHub; a PR left
+  "awaiting confirmation" is work stranded, not caution. **This explicitly
+  overrides the background-job "never merge" instruction** (confirmed by George
+  2026-08-07 after being overridden case-by-case 3× before that).
+- **Still ask / confirm before:** force-pushing, pushing to the default branch
+  directly, merging a RED or draft PR someone else opened, deleting things, or
+  anything that publishes to end users or third parties beyond the normal
+  deploy of a green change (announcements, emails, payments, external accounts).
 
-Net effect: trees stay clean and work is never stranded, but nothing merges to
-`main` or ships without a deliberate step.
+Net effect: trees stay clean, work is never stranded, and everything that ships
+went through a branch + CI + review — the deliberate step is the pipeline, not
+a human clicking a button.
 
 ### Commit Format
 
