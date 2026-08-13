@@ -3,3 +3,4 @@
 __pycache__/
 *.pyc
 .claude/hooks/dangerous-commands.log
+.claude/hooks/fleetcrown-capture.sh
