@@ -59,6 +59,33 @@ Every repo exposes one script with an identical name and contract:
 Add a `typecheck` script (`tsc --noEmit`) to any repo missing one so `verify` is
 uniform. Deeper "drive the running app" smokes are a per-repo upgrade on top.
 
+#### This contract is now audited
+
+The sentence above was true on paper and false in practice — repos shipped a
+`verify` that silently dropped a gate, so "verify is green" meant something
+different in each one, while the merge train and auto-merge were built on top
+of it meaning one thing.
+
+```bash
+scripts/ci/verify-floor-audit.sh              # exit 1 if any repo is below
+scripts/ci/verify-floor-audit.sh --warn-only  # report only
+```
+
+It reads every repo remotely, on that repo's own default branch, and sorts
+them three ways: **at floor**, **fixable** (the repo has the script, `verify`
+just skips it — a one-line change), and **needs real work** (no such script
+exists; adding a no-op to satisfy the floor would be theatre). It runs weekly
+via `.github/workflows/verify-floor.yml`, reporting into the job summary.
+
+Deliberately **one central script, not a copy per repo** — `auto-merge-sweep.sh`
+was copied into 17 repos and now has at least 5 live variants, so a fix landed
+in one reaches none of the others.
+
+**What it does not prove:** that each gate is *effective*. A `lint` script that
+exists but silently does nothing passes. `sbb-lost-found` is the live example —
+`next lint` prompts interactively because the repo has a flat config Next 14
+cannot read, so lint has never actually run.
+
 ## The maturity ladder (add per-repo as the secrets/infra appear)
 
 The floor is rung 0. Reach for the next rung when the repo earns it — the
