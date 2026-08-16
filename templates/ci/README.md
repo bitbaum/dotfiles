@@ -154,10 +154,20 @@ against evig's `ci.yml` (must fire), orangecat's `cd.yml` (must stay silent, it
 is a legitimate best-effort fallback), and the repaired evig file (must stay
 silent).
 
+That is not a formality. The no-test-files check in this very section produced a
+**false positive on its first live run**: it flagged `ivy-portal`, whose `test`
+is `node scripts/smoke.mjs` — a zero-dependency script that boots the real
+server, asserts a 200, and exits with the true code. It has no test *files*
+because it carries its own assertions. The rule's premise — *"it can only ever
+fail"* — was true of `jest` pointed at nothing and false here, so it was narrowed
+to file-discovering runners before it shipped. **A new rule's first finding
+deserves more suspicion than its hundredth, not less:** it is the one you have no
+calibration for.
+
 **What is now audited centrally**, so these cannot silently return:
 
 - a step that runs a floor gate under `continue-on-error` → `⊘ DISCARDED`
-- a `test` script with no test files on the branch → `test(no-test-files)`
+- a file-discovering test runner with no test files → `test(runner-no-files)`
 - a `test` script that only drives a browser → `test(e2e-only)`
 - `verify` defined but no workflow runs it → `⊗ UNCALLED`
 - `verify` invoked or written so it cannot fail → `⊙ SOFTENED`
