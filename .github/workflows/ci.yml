@@ -82,6 +82,14 @@ jobs:
       - name: The duplication ratchet can still go red
         run: bash scripts/ci/test-shared-inventory.sh
 
+      # The sweep decides what ships in every repo that calls it, so it is the
+      # last script here that should be untested — and until now it was. These
+      # run the REAL script against a fake `gh`, exercising shipped control flow
+      # rather than a description of it. Ported from evig, the only repo that
+      # had them, when its copy of the script was centralised.
+      - name: The auto-merge sweep behaves
+        run: bash scripts/ci/test-auto-merge-sweep.sh
+
       # Drift guard. The fleet is on v7; templates handing out v4 is exactly
       # how this repo fell behind the repos it governs.
       - name: No stale action versions
