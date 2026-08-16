@@ -76,3 +76,40 @@ reference implementations already exist, lift them:
 
 **Rule:** the second time you hand-fix a class of bug, it becomes a gate here —
 not a third manual fix. This template is where "never fix it twice" lives.
+
+## Checking that a repo actually honours the floor
+
+Everything above is a *stated* rule. Stating a rule is not enforcing one, and
+the gap between the two is where this fleet has repeatedly lost weeks:
+
+```bash
+dotfiles/scripts/ci/check-verify-contract.sh            # this repo
+dotfiles/scripts/ci/check-verify-contract.sh --all      # every repo under ~/dev
+```
+
+It asserts the contract **end to end** — `verify` exists, CI actually invokes
+it, and that invocation cannot be softened:
+
+| Rule | Why it is a rule |
+|---|---|
+| `verify` exists | without it there is no single definition of "verified" |
+| CI invokes `verify` | a repo can hand-copy the steps, then drift from them |
+| no `--if-present` on it | renaming a script turns its gate into a silent pass |
+| no `continue-on-error` on that step | the result is computed, then discarded |
+| `verify` has no `\|\| true` inside | CI faithfully runs a gate that cannot fail |
+
+The earlier fleet audit checked only whether repos *declared* a `verify` script
+and found 21 of 21 did — which reads like success and was not. Running the
+end-to-end check found four real violations, including a repo whose CI
+hand-copied verify's four steps with `--if-present` on each, and one whose CI
+linted with `--max-warnings 0` while its own `verify` script did not — so
+`verify` on a laptop was **weaker** than the gate blocking the merge.
+
+**What it deliberately does not check**, so a pass is not read as more than it
+is: whether the checks inside `verify` are any good, whether the tests assert
+anything, or `|| true` elsewhere in CI (usually legitimate — flagging it gave
+nine false alarms out of nine here, and a checker that cries wolf gets ignored).
+
+The checker has its own negative tests (`test-check-verify-contract.sh`, run by
+this repo's CI) proving each rule still bites against a violating fixture. A
+gate that has never gone red is indistinguishable from one that cannot.
