@@ -2,6 +2,32 @@
 #
 # Merge every open PR that is ready and fully green, then re-arm CI/CD.
 #
+# THIS IS THE CANONICAL COPY. Adopt it via the reusable workflow
+# (.github/workflows/auto-merge-sweep.yml) — do not copy this file into a repo.
+#
+# It WAS copied, into 22 repos, and drifted into EIGHT distinct versions of
+# 245–404 lines. Three of them independently grew different fixes for real
+# outages, and each fix reached only the repo that wrote it:
+#
+#   evig, revampit   infra-failure detection + re-run. An Actions incident left
+#                    main `failure` with no failed job; 11 PRs stranded ~14h.
+#   fleetcrown       DEADLOCK naming — a red base with the fix sitting in the
+#                    queue was indistinguishable from "nothing to merge".
+#   the other 19     neither.
+#
+# This file is their UNION, and that is the whole argument for central code: the
+# second repo to hit an Actions incident had already been given the answer by
+# the first, and never received it.
+#
+# It is built on the variant 10 repos were already running, with the two fixes
+# spliced in — NOT on the longest variant. "Take the biggest file" is not a
+# merge strategy: the 404-line version is missing the step-summary reporting
+# that the 296-line one has, so picking by size would have silently deleted
+# working behaviour from ten repos.
+#
+# Every repo-specific value is an env var (GH_REPO, BASE_BRANCH, CI_WORKFLOW,
+# REARM_WORKFLOWS, MAX_RUN_ATTEMPTS), so there is nothing left to fork over.
+#
 # WHY THIS EXISTS
 # ---------------
 # Nobody reviews PRs on this fleet — the owner explicitly does not want to be in
@@ -52,6 +78,57 @@ REARM_WORKFLOWS="${REARM_WORKFLOWS:-$CI_WORKFLOW}"
 
 # A PR wearing any of these is never merged automatically.
 HOLD_LABELS='["hold","no-automerge","do-not-merge","wip"]'
+
+# How many times a run that produced NO VERDICT may be re-run before the sweep
+# gives up on it. Bounded so an endlessly-failing run cannot become an infinite
+# re-run loop billing Actions minutes.
+MAX_RUN_ATTEMPTS="${MAX_RUN_ATTEMPTS:-3}"
+
+# ── Telling "the code is broken" from "the CI system broke" ──────────────────
+#
+# A run can end without ever judging the code: cancelled, or failed inside
+# GitHub's own "Set up job" step. Treating that as a verdict is what strands a
+# queue — and unlike a real failure, nobody gets a signal, because the sweep
+# still exits 0 and looks perfectly healthy while merging nothing.
+#
+# Observed on evig 2026-08-07: an Actions incident left main's run `failure`
+# with no failed job at all (one cancelled, the rest green). It held 11 PRs for
+# ~14 hours. A genuine failure still blocks — that IS a verdict about the code.
+run_failure_is_infra() {
+  run_failure_is_infra_id="$1"
+  run_failure_is_infra_steps=$(gh api \
+    "repos/${REPO}/actions/runs/${run_failure_is_infra_id}/jobs" --paginate \
+    --jq '[ .jobs[]
+            | select(.conclusion == "failure")
+            | [ .steps[]? | select(.conclusion == "failure") | .name ] ]
+          | flatten | unique | join("|")' 2>/dev/null) || return 1
+  [ -n "$run_failure_is_infra_steps" ] || return 1
+  # ONLY when the sole failing step is GitHub's own runner setup. Anything else
+  # is the repo's code failing and must keep blocking.
+  [ "$run_failure_is_infra_steps" = "Set up job" ]
+}
+
+run_conclusion_is_non_verdict() {
+  case "$1" in
+    cancelled) return 0 ;;
+    failure) run_failure_is_infra "$2" ;;
+    *) return 1 ;;
+  esac
+}
+
+rerun_non_verdict_run() {
+  rerun_id="$1"
+  rerun_what="$2"
+  rerun_attempt=$(gh api "repos/${REPO}/actions/runs/${rerun_id}" \
+    --jq '.run_attempt // 1' 2>/dev/null || echo "$MAX_RUN_ATTEMPTS")
+  if [ "$rerun_attempt" -ge "$MAX_RUN_ATTEMPTS" ]; then
+    echo "[auto-merge] ${rerun_what} run ${rerun_id} already at attempt ${rerun_attempt}/${MAX_RUN_ATTEMPTS} — not retrying again" >&2
+    return 1
+  fi
+  echo "[auto-merge] ${rerun_what} run ${rerun_id} produced no verdict (attempt ${rerun_attempt}) — re-running"
+  gh run rerun "$rerun_id" --repo "$REPO" \
+    || { echo "[auto-merge] could not re-run ${rerun_id}" >&2; return 1; }
+}
 
 echo "[auto-merge] sweeping open PRs against ${BASE_BRANCH} in ${REPO}"
 
@@ -104,6 +181,35 @@ else
   # base failure whose jobs cannot be identified at all.
   if [ "$base_conclusion" != "success" ]; then
     base_run_id=$(printf '%s' "${base_ci}" | jq -r '.databaseId')
+
+    # THE OTHER DEADLOCK: the only thing that produces a new CI run on the base
+    # is a merge, and merges are exactly what this guard blocks. So a base run
+    # that ended without a verdict strands every open PR until a human notices,
+    # and nothing signals that they should.
+    if run_conclusion_is_non_verdict "$base_conclusion" "$base_run_id"; then
+      rerun_non_verdict_run "$base_run_id" "${BASE_BRANCH}" || true
+      echo "[auto-merge] deferring to the next sweep to judge ${BASE_BRANCH}"
+      exit 0
+    fi
+
+    # NAME THE DEADLOCK. A red base is usually transient; it becomes a deadlock
+    # when the only PR that repairs it is sitting in the queue. The guard below
+    # already lets a PR through if it is green on the failing jobs — but when
+    # none qualifies, the sweep exits 0 and the stall is indistinguishable from
+    # "nothing to merge". That is the third time in this fleet a permanent stall
+    # looked like an ordinary skip, so make it loud and name the candidates.
+    ready=$(gh pr list --repo "$REPO" --state open --base "$BASE_BRANCH" --limit 50 \
+      --json number,title,isDraft,mergeStateStatus,labels \
+      --jq "[ .[]
+              | select(.isDraft | not)
+              | select(.mergeStateStatus == \"CLEAN\")
+              | select([.labels[].name] - ${HOLD_LABELS} == [.labels[].name])
+              | \"  #\(.number) \(.title)\" ] | .[]" 2>/dev/null)
+    if [ -n "$ready" ]; then
+      echo "[auto-merge] ⚠ DEADLOCK RISK: ${BASE_BRANCH} is red and these green PRs are waiting — one may be the fix:" >&2
+      printf '%s\n' "$ready" >&2
+    fi
+
     base_red_jobs=$(gh run view "${base_run_id}" --repo "$REPO" --json jobs \
       --jq '[.jobs[] | select(.conclusion == "failure") | .name] | .[]' 2>/dev/null || true)
     if [ -z "${base_red_jobs}" ]; then
