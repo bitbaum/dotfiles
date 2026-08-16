@@ -63,6 +63,18 @@ jobs:
           done
           echo "verify SSOT: present in both templates"
 
+      # The conformance checker enforces the template's premise across the whole
+      # fleet, so it is the last thing that may quietly stop working. Its own
+      # negative tests prove each rule still BITES against a violating fixture —
+      # and that conforming shapes are still not flagged, because a checker that
+      # cries wolf gets ignored and then it may as well not exist.
+      #
+      # This matters more than it looks: the checker's first clean run reported
+      # "all 21 repos conform", and a gate that has never gone red is
+      # indistinguishable from one that cannot.
+      - name: The verify-contract checker can still go red
+        run: bash scripts/ci/test-check-verify-contract.sh
+
       # Drift guard. The fleet is on v7; templates handing out v4 is exactly
       # how this repo fell behind the repos it governs.
       - name: No stale action versions
