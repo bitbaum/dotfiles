@@ -71,6 +71,30 @@ const FIXTURES = {
       <button style="color:#e4e4e4;background:oklch(1 0 0 / 0.04);border:0;padding:4px 10px">0 working</button>
       <button style="color:#e4e4e4;background:oklch(1 0 0 / 0.04);border:0;padding:4px 10px">21 idle</button>
     </div>`,
+// A nested GROUP between peer lines. datacat renders exactly this: a card
+  // title, a description, an icon checklist, then a CTA back at the card edge.
+  // The checklist is indented because it is a group, not because anything is
+  // broken — and the CTA returning to the base indent is what made the first
+  // draft call it ragged.
+  nestedGroup: `
+    <div style="background:#fff;color:#111;font:14px sans-serif;padding:24px">
+      <div style="display:flex;flex-direction:column;gap:12px;width:600px">
+        <h3 style="margin:0">Formular-Erfassung</h3>
+        <p style="margin:0">Erstellen Sie benutzerdefinierte Formulare für Umfragen.</p>
+        <div style="padding-left:24px">
+          <div>KI-gestützte Sentiment-Analyse</div>
+          <div>Automatische Kategorisierung</div>
+          <div>Trend-Erkennung</div>
+        </div>
+        <a href="#x" style="color:#4338ca">Formular erstellen →</a>
+      </div>
+    </div>`,
+
+  // Centered copy. Every line starts at a different x BY DESIGN.
+  centeredCopy: `
+    <div style="background:#fff;color:#111;font:16px sans-serif;padding:24px">
+      <p style="text-align:center;max-width:420px;margin:0 auto">Every feature — health tracking, digital twin, vet network, marketplace, and adoption listings — is included free with no pet limits.</p>
+    </div>`,
 };
 
 function assert(cond, msg) {
@@ -143,6 +167,22 @@ async function main() {
         `(a single canvas paint reports ~3.2 here)`,
       );
     }
+  });
+
+  await check("does NOT flag a nested group between peer lines", async () => {
+    const r = await measure(FIXTURES.nestedGroup);
+    assert(
+      r.ragged.length === 0,
+      `an indented list between a description and a CTA is structure, got ${JSON.stringify(r.ragged)}`,
+    );
+  });
+
+  await check("does NOT flag centered copy as a missing hanging indent", async () => {
+    const r = await measure(FIXTURES.centeredCopy);
+    assert(
+      r.wrapped.length === 0,
+      `centered lines start at different x by design, got ${JSON.stringify(r.wrapped)}`,
+    );
   });
 
   await browser.close();

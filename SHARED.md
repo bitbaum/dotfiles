@@ -59,6 +59,19 @@ there is no role to check.
 cannot `require()` it. Every candidate above is ESM already; note it before
 adopting anywhere that is not.
 
+### Central audits — one script, never a copy per repo
+
+Not installable packages: these run FROM this repo against every other one, so
+there is nothing to adopt and nothing to drift. Check here before writing a
+fleet-wide checker.
+
+| Script | Answers |
+|---|---|
+| `scripts/ci/verify-floor-audit.sh` | does every repo's `verify` actually run lint + typecheck + test? |
+| `scripts/ci/ui-defect-audit.mjs` | do any live sites ship an interactive label below its WCAG AA floor, or a stack whose rows start at different x? Renders each site; no repo checkout involved. Self-tested by `scripts/ci/test-ui-defect-audit.mjs`, which pins BOTH sides — the real defect is still caught, correct markup stays silent. |
+
+Both report into a weekly workflow's job summary rather than only a log.
+
 ## What is worth extracting next
 
 Ranked by (copies × how identical the logic is). Counts from
