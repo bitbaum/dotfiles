@@ -21,6 +21,17 @@
 # would have called it satisfied had verify referenced it. Contract first;
 # effectiveness is a separate check.
 #
+# ONE effectiveness hole is checked, because the fleet has already fallen down
+# it: a CI step that RUNS a floor gate and then throws the result away with
+# `continue-on-error: true`. evig's unit-test job carried that flag from the
+# day it was added ("non-blocking while the suite matures"); the suite matured
+# to 7,769 tests, the 2026-07-28 token sweep broke 25 assertions, and every PR
+# for three weeks reported the job green. A discarded gate is worse than an
+# absent one — it is an absent gate that produces a ✓. The check is narrow on
+# purpose: only steps running lint/typecheck/test/verify count, so a
+# best-effort step with a real fallback (orangecat's cd.yml artifact download)
+# is correctly ignored.
+#
 # Usage:
 #   scripts/ci/verify-floor-audit.sh              # audit, exit 1 on violations
 #   scripts/ci/verify-floor-audit.sh --warn-only  # report, always exit 0
@@ -44,10 +55,40 @@ weak_list=""
 missing_list=""
 skipped_list=""
 unreadable_list=""
+discarded_list=""
 total=0
 
 command -v gh >/dev/null 2>&1 || { echo "gh CLI not found" >&2; exit 2; }
 command -v jq >/dev/null 2>&1 || { echo "jq not found" >&2; exit 2; }
+
+# Report every step that both runs a floor gate and discards its result.
+#
+# Scoped to STEP blocks (a list item, `^\s*- `), not whole jobs: a step is the
+# unit `continue-on-error` attaches to in the common case, and correlating a
+# job-level flag with the gate it silences needs a real YAML parser. That is a
+# known blind spot, stated rather than papered over — a job-level flag on a
+# gate job would be missed here.
+#
+# A `run: |` block puts the command on LATER lines than the `run:` key, so any
+# line inside the block is tested, not just the key line.
+scan_discarded_gates() {
+  awk -v wf="$1" '
+    function flush() {
+      if (has_gate && has_coe) printf "%s (%s)\n", wf, gate
+      has_gate = 0; has_coe = 0; gate = ""
+    }
+    /^[[:space:]]*-[[:space:]]/ { flush() }
+    {
+      if ($0 ~ /(npm|pnpm|yarn|bun)([[:space:]]+run)?[[:space:]]+(test|lint|typecheck|type-check|verify)([[:space:]]|$)/ ||
+          $0 ~ /(eslint|vitest|jest|mocha|playwright test|tsc[[:space:]]+--noEmit|vue-tsc|svelte-check)/) {
+        has_gate = 1
+        if (gate == "") { gate = $0; sub(/^[[:space:]]*(-[[:space:]]*)?(run:[[:space:]]*)?/, "", gate) }
+      }
+      if ($0 ~ /continue-on-error:[[:space:]]*true/) has_coe = 1
+    }
+    END { flush() }
+  '
+}
 
 echo "verify-floor audit — owner: $OWNER"
 echo "floor: verify must run lint AND typecheck AND test"
@@ -160,6 +201,21 @@ while IFS=$'\t' read -r name branch; do
     fi
   done
 
+  # Effectiveness probe: a gate CI runs and then ignores. Costs one listing
+  # plus one fetch per workflow file, which is why it lives in a weekly cron
+  # and not a per-push hook.
+  for wf in $(gh api "repos/$OWNER/$name/contents/.github/workflows?ref=$branch" \
+                --jq '.[] | select(.name | test("\\.ya?ml$")) | .name' 2>/dev/null); do
+    wf_body=$(gh api "repos/$OWNER/$name/contents/.github/workflows/$wf?ref=$branch" \
+                --jq '.content' 2>/dev/null | tr -d '\n' | base64 -d 2>/dev/null)
+    [ -n "$wf_body" ] || continue
+    hits=$(printf '%s\n' "$wf_body" | scan_discarded_gates "$wf")
+    while IFS= read -r hit; do
+      [ -n "$hit" ] || continue
+      discarded_list="${discarded_list}  $name — $hit\n"
+    done <<< "$hits"
+  done
+
   if [ -z "$verify" ]; then
     missing_list="${missing_list}  $name — no \`verify\` script at all\n"
   elif [ -n "$absent" ]; then
@@ -184,6 +240,10 @@ echo
 printf '✗ NEEDS REAL WORK — no script exists for a required gate\n'
 printf '%b' "${missing_list:-  (none)\n}"
 
+echo
+printf '⊘ DISCARDED — CI runs a floor gate and throws the result away\n'
+printf '%b' "${discarded_list:-  (none)\n}"
+
 
 if [ -n "$skipped_list" ]; then
   echo
@@ -199,10 +259,12 @@ fi
 
 echo
 echo "inspected $total JS repo(s)"
-echo "note: this checks that verify RUNS each gate, not that each gate works."
+echo "note: this checks that verify RUNS each gate, not that each gate works —"
+echo "      with one exception, the discarded-gate check above."
 
 violations=$(( $(printf '%b' "$weak_list" | grep -c . || true) + \
-               $(printf '%b' "$missing_list" | grep -c . || true) ))
+               $(printf '%b' "$missing_list" | grep -c . || true) + \
+               $(printf '%b' "$discarded_list" | grep -c . || true) ))
 
 if [ "$violations" -gt 0 ] && [ "$WARN_ONLY" -eq 0 ]; then
   echo "verify-floor: $violations repo(s) below the floor" >&2
