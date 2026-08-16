@@ -75,6 +75,13 @@ jobs:
       - name: The verify-contract rules can still go red
         run: bash scripts/ci/test-verify-predicates.sh
 
+      # The duplication ratchet's entire value is that it CAN go red. A ratchet
+      # that silently passes while duplication rises certifies the thing it was
+      # built to stop. Its counting half needs the API; its deciding half is
+      # pure text and is tested here against fixtures, with no network.
+      - name: The duplication ratchet can still go red
+        run: bash scripts/ci/test-shared-inventory.sh
+
       # Drift guard. The fleet is on v7; templates handing out v4 is exactly
       # how this repo fell behind the repos it governs.
       - name: No stale action versions
