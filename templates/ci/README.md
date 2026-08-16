@@ -14,10 +14,11 @@ Every repo's `main` is protected by, at minimum, on every push and PR:
 
 1. **Lint** — catches the undefined-identifier / dead-code class before merge.
 2. **Typecheck** (`tsc --noEmit`) — the compiler is the first line of defence.
-3. **Tests** — a suite that **exists** and actually *runs*. Both halves are
-   load-bearing: a `test` script with no test files behind it is worse than no
-   script, because it can only ever fail, so it never gets wired in and its
-   emptiness hides. Audited; see Rung 4.
+3. **Tests** — assertions that **exist** and actually *run*. Both halves are
+   load-bearing: `jest` pointed at a repo with no test files can only ever fail,
+   so it never gets wired in and its emptiness hides. (A bespoke script that
+   carries its own assertions is fine — the defect is a file-discovering runner
+   with nothing to discover.) Audited; see Rung 4.
 4. **Build** — the app compiles into the artifact you ship (tested == shipped).
 
 Passing all four is the *entry* condition, not the goal. A gate that runs and
@@ -123,7 +124,7 @@ gate can run, report success, and mean nothing:
 | Result discarded | evig | `continue-on-error: true` on the unit-test job — 7,769 tests ran on every PR and the answer was thrown away for three weeks |
 | Never executed | sbb-lost-found | `next lint` hit an interactive setup wizard; the four services had no eslint config at all |
 | Scope collapsed | sbb-lost-found | `eslint src/**/*.ts` runs through `sh`, where `**` is `*` — it linted `utils/logger.ts` and skipped every `index.ts` |
-| Nothing to run | sbb-lost-found | `test: jest` in four packages, **zero test files in the repo** |
+| Nothing to run | sbb-lost-found | `test: jest` in four packages, **zero test files in the repo** — a runner with nothing to discover |
 | Wrong rung | datacat | `test` is `npx playwright test` — needs a browser and a server, so it is an upgrade, not the floor |
 
 Every one passed a "does the repo have a `test` script?" check. None of them
