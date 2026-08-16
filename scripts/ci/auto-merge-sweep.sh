@@ -76,6 +76,12 @@ BASE_BRANCH="${BASE_BRANCH:-main}"
 CI_WORKFLOW="${CI_WORKFLOW:-ci.yml}"
 REARM_WORKFLOWS="${REARM_WORKFLOWS:-$CI_WORKFLOW}"
 
+# Workflow that ships the base branch, e.g. deploy.yml. EMPTY DISABLES IT, and
+# empty is the default: a repo that does not set this behaves exactly as before,
+# so adopting the reconciler is opt-in rather than something that starts firing
+# deploys in repos that never asked for one.
+DEPLOY_WORKFLOW="${DEPLOY_WORKFLOW:-}"
+
 # A PR wearing any of these is never merged automatically.
 HOLD_LABELS='["hold","no-automerge","do-not-merge","wip"]'
 
@@ -218,6 +224,43 @@ else
     fi
     echo "[auto-merge] ${BASE_BRANCH} CI is ${base_conclusion} — failing: $(printf '%s' "${base_red_jobs}" | tr '\n' ' ')" >&2
     echo "[auto-merge] only a PR that is green on those exact jobs may merge (its checks run on the merge result)"
+  fi
+fi
+
+# ── Reconcile: a green base must be what is LIVE ─────────────────────────────
+#
+# Deployment is a RECONCILER, not a chain. A push made with GITHUB_TOKEN emits
+# no workflow_run event, and — one level deeper than anyone expects — neither
+# does a run that GITHUB_TOKEN itself dispatched. So nothing downstream ever
+# wakes on an automated merge. Observed on fleetcrown 2026-08-05: three PRs
+# merged, main green, zero Deploy runs created. Invisible, because CI itself ran
+# and went green.
+#
+# So instead of trusting a trigger, compare desired state (the base's tip) with
+# actual state (the last successful deploy) and close the gap. That is
+# self-healing by construction: a deploy that never fired, or fired and failed,
+# is retried by the next sweep instead of leaving a commit merged-but-not-live.
+#
+# THE GREEN GUARD IS NOT OPTIONAL. The variant this came from exited on a red
+# base, so reaching the reconciler there proved the tip was green. This script
+# deliberately does NOT exit on red — it lets a PR that repairs the base through
+# — so the same code placed here without `-z "$base_red_jobs"` would ship a tip
+# whose CI is failing. Same lines, different surrounding control flow, opposite
+# meaning.
+if [ -n "$DEPLOY_WORKFLOW" ] && [ -n "${base_ci:-}" ] && [ -z "${base_red_jobs}" ]; then
+  deploy_running=$(gh run list --repo "$REPO" --workflow "$DEPLOY_WORKFLOW" --limit 5 \
+    --json status --jq '[.[] | select(.status != "completed")] | length' 2>/dev/null || echo 0)
+  deployed_sha=$(gh run list --repo "$REPO" --workflow "$DEPLOY_WORKFLOW" --branch "$BASE_BRANCH" \
+    --status success --limit 1 --json headSha --jq '.[0].headSha // ""' 2>/dev/null || echo "")
+
+  if [ "${deploy_running:-0}" -gt 0 ]; then
+    echo "[auto-merge] a deploy is already in flight — not dispatching another"
+  elif [ "$deployed_sha" = "$base_sha" ]; then
+    echo "[auto-merge] ${BASE_BRANCH} ${base_sha:0:8} is already deployed"
+  else
+    echo "[auto-merge] ${BASE_BRANCH} is at ${base_sha:0:8}; last successful deploy was ${deployed_sha:0:8}${deployed_sha:+ } — shipping"
+    gh workflow run "$DEPLOY_WORKFLOW" --repo "$REPO" --ref "$BASE_BRANCH" \
+      || echo "[auto-merge] could not dispatch ${DEPLOY_WORKFLOW} — is workflow_dispatch declared?" >&2
   fi
 fi
 

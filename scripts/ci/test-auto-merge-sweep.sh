@@ -28,10 +28,11 @@ FAIL=0
 ok() { printf '  ✓ %s\n' "$1"; PASS=$((PASS + 1)); }
 no() { printf '  ✗ %s\n' "$1"; FAIL=$((FAIL + 1)); }
 
-# run_sweep <conclusion> <failed-steps> <run-attempt>
+# run_sweep <conclusion> <failed-steps> <run-attempt> [deploy-workflow] [deployed-sha] [running]
 # Emits the sweep's combined output; records gh calls in $GH_LOG.
 run_sweep() {
   local conclusion="$1" failed_steps="${2:-}" attempt="${3:-1}"
+  local deploy_wf="${4:-}" deployed_sha="${5:-}" deploy_running="${6:-0}"
   local dir; dir="$(mktemp -d)"
   GH_LOG="$dir/gh-calls.log"
   : > "$GH_LOG"
@@ -42,6 +43,10 @@ ARGS="\$*"
 echo "\$ARGS" >> "$GH_LOG"
 case "\$ARGS" in
   *"/commits/"*)                    echo "basesha000000" ;;
+  # Deploy-reconciler queries, matched BEFORE the generic CI one — ordering is
+  # the only thing separating them, since all three start with "run list".
+  "run list"*"--json status"*)      printf '%s\n' '$deploy_running' ;;
+  "run list"*"--status success"*)   printf '%s\n' '$deployed_sha' ;;
   "run list"*)                      printf '%s\n' '{"databaseId":42,"status":"completed","conclusion":"$conclusion","headSha":"basesha000000"}' ;;
   *"/actions/runs/"*"/jobs"*)       printf '%s\n' '$failed_steps' ;;
   "run rerun"*)                     echo "rerun dispatched" ;;
@@ -56,6 +61,7 @@ FAKE
 
   local out status
   out=$(PATH="$dir:$PATH" GH_REPO=maonakamoto/fixture BASE_BRANCH=main \
+        DEPLOY_WORKFLOW="$deploy_wf" \
         bash "$SWEEP" 2>&1)
   status=$?
   SWEEP_OUT="$out"
@@ -125,6 +131,51 @@ if run_sweep success '' 1; then
     *"no open PRs"*) ok 'proceeds to the PR loop when the base is green' ;;
     *) no "proceeds to the PR loop when the base is green (got: $(printf '%s' "$SWEEP_OUT" | tail -1))" ;;
   esac
+fi
+
+echo "auto-merge sweep — deploy reconciler"
+
+deploys() { grep -c '^workflow run deploy.yml' "$GH_LOG" 2>/dev/null; }
+
+# 7. OFF BY DEFAULT. A repo that sets no DEPLOY_WORKFLOW must behave exactly as
+#    before — adopting a reconciler must never start firing deploys in repos
+#    that never asked for one.
+if run_sweep success '' 1 '' '' 0; then
+  [ "$(deploys)" -eq 0 ] \
+    && ok 'is inert when DEPLOY_WORKFLOW is unset' \
+    || no 'is inert when DEPLOY_WORKFLOW is unset'
+fi
+
+# 8. Drifted: green tip, last successful deploy is an older sha → ship.
+if run_sweep success '' 1 deploy.yml oldsha00 0; then
+  [ "$(deploys)" -ge 1 ] \
+    && ok 'ships a green tip that is not yet deployed' \
+    || no 'ships a green tip that is not yet deployed'
+fi
+
+# 9. Already live → do nothing. Re-dispatching every sweep would deploy the same
+#    commit forever, every ten minutes.
+if run_sweep success '' 1 deploy.yml basesha000000 0; then
+  [ "$(deploys)" -eq 0 ] \
+    && ok 'does not re-deploy a tip that is already live' \
+    || no 'does not re-deploy a tip that is already live'
+fi
+
+# 10. A deploy already in flight → do not stack another on top of it.
+if run_sweep success '' 1 deploy.yml oldsha00 2; then
+  [ "$(deploys)" -eq 0 ] \
+    && ok 'does not dispatch while a deploy is already in flight' \
+    || no 'does not dispatch while a deploy is already in flight'
+fi
+
+# 11. THE ONE THAT MATTERS. This script does not exit on a red base — it lets a
+#     PR that repairs the base through — so the reconciler must refuse to ship a
+#     failing tip. The variant this code came from exited on red, which made the
+#     guard invisible; the same lines here without it would deploy red.
+if run_sweep failure 'Run tests' 1 deploy.yml oldsha00 0; then
+  [ "$(deploys)" -eq 0 ] \
+    && ok 'NEVER ships a red base, even though the sweep continues past one' \
+    || no 'NEVER ships a red base, even though the sweep continues past one'
 fi
 
 printf '\n%d passed, %d failed\n' "$PASS" "$FAIL"

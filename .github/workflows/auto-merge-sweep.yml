@@ -32,6 +32,20 @@ on:
           the sweep still exits 0, so the automation looks healthy throughout.
         type: string
         default: ''
+      deploy_workflow:
+        description: >
+          Workflow that ships the base branch, e.g. deploy.yml. EMPTY DISABLES
+          the reconciler, and empty is the default.
+
+          Set it when merges must reach production: a push made with
+          GITHUB_TOKEN emits no workflow_run event — and neither does a run that
+          GITHUB_TOKEN dispatched — so nothing downstream wakes on an automated
+          merge. Rather than trust a trigger, the sweep compares the base tip
+          against the last successful deploy and closes the gap, so a deploy
+          that never fired or fired and failed is retried next sweep instead of
+          leaving a commit merged-but-not-live.
+        type: string
+        default: ''
       max_run_attempts:
         description: 'How many times to re-run a run that produced no verdict.'
         type: string
@@ -82,5 +96,6 @@ jobs:
           BASE_BRANCH: ${{ inputs.base_branch }}
           CI_WORKFLOW: ${{ inputs.ci_workflow }}
           REARM_WORKFLOWS: ${{ inputs.rearm_workflows }}
+          DEPLOY_WORKFLOW: ${{ inputs.deploy_workflow }}
           MAX_RUN_ATTEMPTS: ${{ inputs.max_run_attempts }}
         run: bash scripts/ci/auto-merge-sweep.sh
