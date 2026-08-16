@@ -226,6 +226,25 @@ export const MEASURE = String.raw`(() => {
       if (getComputedStyle(kid).position === "absolute") continue;
       var rects = lineRects(kid);
       if (!rects) continue;
+      // A child that stacks its own content VERTICALLY is a nested group — a
+      // list, a sub-card — and a group is entitled to its own indent. Only peer
+      // LINES have to share a column. Without this, an ordinary icon checklist
+      // between a description and a CTA reads as a ragged stack, which is how
+      // the first sweep "found" defects in correct markup.
+      //
+      // Vertically, not merely "has several children": a row of chips is two
+      // spans side by side on ONE line, and that is a peer line, not a group.
+      // Counting children alone exempted it and blinded the audit to the very
+      // stack it was written for.
+      var innerTops = {};
+      var innerCount = 0;
+      for (var q = 0; q < kid.children.length; q++) {
+        var kr = lineRects(kid.children[q]);
+        if (!kr) continue;
+        var top = Math.round(kr[0].top);
+        if (!innerTops[top]) { innerTops[top] = 1; innerCount++; }
+      }
+      if (innerCount >= 2) continue;
       kids.push({ el: kid, left: Math.round(rects[0].left), text: (kid.innerText || "").trim().slice(0, 40) });
     }
     if (kids.length < 3) continue;
@@ -267,6 +286,11 @@ export const MEASURE = String.raw`(() => {
   var textish = document.querySelectorAll("p, span, div, li, dd, figcaption");
   for (var t = 0; t < textish.length; t++) {
     var te = textish[t];
+    // Centered, right-aligned and justified text START AT DIFFERENT X BY
+    // DESIGN — that is what the alignment means. Judging them here reported
+    // every centered paragraph in the fleet as a missing hanging indent.
+    var teAlign = getComputedStyle(te).textAlign;
+    if (teAlign !== "left" && teAlign !== "start" && teAlign !== "justify") continue;
     var rr = lineRects(te);
     if (!rr || rr.length < 2) continue;
     var d = Math.round(rr[0].left - rr[1].left);
