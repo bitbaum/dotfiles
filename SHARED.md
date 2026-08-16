@@ -26,8 +26,8 @@ the inventory underneath it is **generated**, and the number it produces is a
 | [`ai-ration`](https://github.com/maonakamoto/ai-ration) | `npm i github:maonakamoto/ai-ration#v0.2.0` | LLM free-tier survival: multi-vendor fallback chain, the three kinds of 429, per-user fair-share rationing, `modelCost()` so a fallback can never silently bill. |
 | [`threadkit`](https://github.com/maonakamoto/threadkit) | `npm i threadkit` | multi-participant message threads where *permission is participation*, not a role or an ownership column. Headless pure functions, so "who may read this" is unit-testable instead of buried in a `WHERE` clause. AI participants obey the same visibility rules. **ESM-only.** |
 
-**Adopted:** `ai-forms` — fleetcrown, evig, aoz-housing, revampit,
-surf-your-life. `ai-ration` — fleetcrown. `threadkit` — **nobody yet**.
+**Adopted:** `ai-forms` — fleetcrown, evig, aoz-housing, surf-your-life.
+`ai-ration` — fleetcrown. `threadkit` — **nobody yet**.
 **Not yet:** orangecat and kivvi still carry their own form-assist; kivvi, evig,
 botsmann still carry their own provider layers.
 

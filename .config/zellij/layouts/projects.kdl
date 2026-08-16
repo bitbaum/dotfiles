@@ -17,8 +17,8 @@ layout {
     tab name="Revamp-Info" {
         pane cwd="/home/g/dev/revamp-info"
     }
-    tab name="Revamp-IT" {
-        pane cwd="/home/g/dev/revampit"
+    tab name="evig" {
+        pane cwd="/home/g/dev/evig"
     }
     tab name="AOZ" {
         pane cwd="/home/g/dev/aoz-housing"
