@@ -14,9 +14,14 @@ Every repo's `main` is protected by, at minimum, on every push and PR:
 
 1. **Lint** — catches the undefined-identifier / dead-code class before merge.
 2. **Typecheck** (`tsc --noEmit`) — the compiler is the first line of defence.
-3. **Tests** — the suite you already wrote actually *runs*. Tests that never run
-   are pure waste; this is the whole point of Rung 2.
+3. **Tests** — a suite that **exists** and actually *runs*. Both halves are
+   load-bearing: a `test` script with no test files behind it is worse than no
+   script, because it can only ever fail, so it never gets wired in and its
+   emptiness hides. Audited; see Rung 4.
 4. **Build** — the app compiles into the artifact you ship (tested == shipped).
+
+Passing all four is the *entry* condition, not the goal. A gate that runs and
+cannot fail satisfies every line above and defends nothing — that is Rung 4.
 
 These four are **hermetic**: they need no secrets, no live database, no network.
 That is deliberate — a gate that goes red for want of a secret trains you to
@@ -105,6 +110,80 @@ legitimate use and is not flagged.
 **Rule:** if a check is not ready to block, don't wire it into CI green. Run it
 on a schedule, or in a job nothing depends on — but never as a step that
 reports success while failing.
+
+## Rung 4 — a gate must be able to go red
+
+The floor asks whether a gate **runs**. That question stopped discriminating
+once nearly every repo passed it, and it was never the interesting one anyway.
+On 2026-08-16 a single day's remediation turned up **five** different ways a
+gate can run, report success, and mean nothing:
+
+| Shape | Found in | What it looked like |
+|---|---|---|
+| Result discarded | evig | `continue-on-error: true` on the unit-test job — 7,769 tests ran on every PR and the answer was thrown away for three weeks |
+| Never executed | sbb-lost-found | `next lint` hit an interactive setup wizard; the four services had no eslint config at all |
+| Scope collapsed | sbb-lost-found | `eslint src/**/*.ts` runs through `sh`, where `**` is `*` — it linted `utils/logger.ts` and skipped every `index.ts` |
+| Nothing to run | sbb-lost-found | `test: jest` in four packages, **zero test files in the repo** |
+| Wrong rung | datacat | `test` is `npx playwright test` — needs a browser and a server, so it is an upgrade, not the floor |
+
+Every one passed a "does the repo have a `test` script?" check. None of them
+defended anything.
+
+**The standard:** for each gate, you must be able to name the change that makes
+it fail. If you cannot, it is decoration — and decoration is worse than nothing,
+because it produces a ✓.
+
+**How you demonstrate that — mutation, not argument.** Break the thing on
+purpose, confirm red, restore. Worked example from the tenant SSOT in
+`sbb-lost-found`, whose job is to decide whose trademark renders:
+
+```
+baseline (unmutated)                        exit 0   ← expected
+themeColor drifts from --brand              exit 1   ← caught
+default tenant becomes a trademarked one    exit 1   ← caught
+unknown env value no longer forced to default  exit 1   ← caught
+```
+
+Three invariants, three deliberate breaks, three reds. That is evidence. "We
+have 45 tests" is not.
+
+**The same rule applies to any rule you write.** A lint rule, grep gate or audit
+column proven only on the case that should fire says nothing about what it lets
+through. Test both directions — the discarded-gate check above was verified
+against evig's `ci.yml` (must fire), orangecat's `cd.yml` (must stay silent, it
+is a legitimate best-effort fallback), and the repaired evig file (must stay
+silent).
+
+**What is now audited centrally**, so these cannot silently return:
+
+- a step that runs a floor gate under `continue-on-error` → `⊘ DISCARDED`
+- a `test` script with no test files on the branch → `test(no-test-files)`
+- a `test` script that only drives a browser → `test(e2e-only)`
+- `verify` defined but no workflow runs it → `⊗ UNCALLED`
+- `verify` invoked or written so it cannot fail → `⊙ SOFTENED`
+
+**What is still yours to prove:** that each gate is *effective*. No central
+audit can know whether your assertions would survive the bug you actually
+ship. That is what the mutation habit is for.
+
+**Where the bar goes next, on the evidence.** The floor catches the
+undefined-identifier and type-error classes. It has never caught the ones that
+actually cost something here, every one of which shipped past a green suite:
+
+- a response handler returning `json(user)` with `passwordHash` and a PIN hash
+  in it — **twice**, the second time one nesting level deeper (`{ok, user}`),
+  which is why a grep cannot close it and an allow-list exhaustive over the
+  schema can;
+- identity taken from the request **body** instead of the session, letting one
+  member vote as another;
+- a query missing its tenant filter — correct at one org, wrong at two, and
+  production had exactly one.
+
+The shape is constant: **the gate asserts what the code does, not what it must
+never do.** Rung 5 is gating the closed side — write the test that fails when
+the field leaks, the identity is spoofed, or the scope is dropped. Until a repo
+has that, "verify is green" means the code compiles and behaves, not that it is
+safe.
 
 ## The maturity ladder (add per-repo as the secrets/infra appear)
 

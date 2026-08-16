@@ -219,6 +219,30 @@ while IFS=$'\t' read -r name branch is_fork; do
 $(printf '%s' "$sub_scripts" | jq -r 'to_entries[] | "\(.key) \(.value)"')"
   done
 
+  # Count test FILES on the branch, because "the repo has a `test` script" and
+  # "the repo has tests" are different claims. sbb-lost-found declared
+  # `test: jest` in four services with ZERO test files anywhere in the repo:
+  # the script could only ever fail, which is why it was never wired into
+  # verify. That is the third form of the same class as `continue-on-error` and
+  # e2e-only — a gate that cannot pass, cannot fail, or cannot see anything.
+  #
+  # The pattern is deliberately GENEROUS: a false "no tests" would be exactly
+  # the confident-absence bug this script just stopped committing. A truncated
+  # tree is reported as unknown rather than zero, for the same reason.
+  test_files=unknown
+  tree=$(gh api "repos/$OWNER/$name/git/trees/$branch?recursive=1" 2>/dev/null)
+  if [ -n "$tree" ]; then
+    if [ "$(printf '%s' "$tree" | jq -r '.truncated // false')" = true ]; then
+      test_files=unknown          # too big to enumerate; do not guess
+    else
+      test_files=$(printf '%s' "$tree" | jq '[.tree[]? | select(.type == "blob")
+        | select(.path | test("(^|/)(__tests__|__test__|tests?|specs?|e2e|cypress)/";"i")
+                      or test("\\.(test|spec)\\.[cm]?[jt]sx?$";"i")
+                      or test("_test\\.[cm]?[jt]sx?$";"i"))] | length' 2>/dev/null)
+      [ -n "$test_files" ] || test_files=unknown
+    fi
+  fi
+
   # Does verify hand off to a SCRIPT FILE this audit cannot read? openclaw's
   # verify is `node scripts/verify.mjs`, which runs `pnpm check` then `pnpm
   # test`, and check.mjs has explicit typecheck (tsgo) and lint stages — a
@@ -262,6 +286,14 @@ $(printf '%s' "$sub_scripts" | jq -r 'to_entries[] | "\(.key) \(.value)"')"
     #     count without this script having to see through them.
     #  2. verify runs the TOOL inline with no named script — fleetcrown calls
     #     `tsc --noEmit` straight from verify.
+    # A `test` gate that reaches no test files is satisfied on paper and empty
+    # in fact. Checked BEFORE the "verify names it" shortcut, because naming a
+    # script is exactly the evidence that turns out to be worthless here.
+    if [ "$gate" = test ] && [ "$test_files" = 0 ]; then
+      absent="$absent test(no-test-files)"
+      continue
+    fi
+
     # Checked against the whole REACHABLE call graph, not just verify's own
     # text, so a gate named inside a sub-package (printcraft: app/package.json)
     # counts the same as one named directly.
@@ -368,8 +400,11 @@ printf '%b' "${weak_list:-  (none)\n}"
 
 echo
 printf '✗ NEEDS REAL WORK — no hermetic script exists for a required gate\n'
-printf '  (test(e2e-only) = the repo has a `test` script, but it drives a\n'
-printf '   browser — an upgrade rung, not the floor. Needs a unit suite.)\n'
+printf '  (test(e2e-only)      = has a `test` script, but it drives a browser —\n'
+printf '                         an upgrade rung, not the floor.\n'
+printf '   test(no-test-files) = has a `test` script and NO test files. Worse\n'
+printf '                         than no script: it can only ever fail, so it\n'
+printf '                         never gets wired in, and its absence hides.)\n'
 printf '%b' "${missing_list:-  (none)\n}"
 
 echo
