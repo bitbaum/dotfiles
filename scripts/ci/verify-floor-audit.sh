@@ -160,6 +160,11 @@ while IFS=$'\t' read -r name branch; do
   expanded=$(expand_once "$verify")
   expanded=$(expand_once "$expanded")
 
+  # The repo's own `test` script, expanded — used to tell a hermetic unit suite
+  # from an e2e runner wearing the same script name.
+  test_body=$(printf '%s' "$scripts" | jq -r '.test // ""')
+  test_body=$(expand_once "$test_body")
+
   # Same expansion over ALL scripts, to answer the different question of
   # whether the repo owns such a gate anywhere.
   all_bodies=$(printf '%s' "$scripts" | jq -r 'to_entries[] | "\(.key) \(.value)"')
@@ -195,7 +200,20 @@ while IFS=$'\t' read -r name branch; do
                then "yes" else "no" end')
 
     if [ "$named" = yes ] || printf '%s' "$all_bodies" | grep -qE "$re"; then
-      gaps="$gaps $gate"            # repo owns it, verify just skips it
+      # "The repo has a `test` script" is NOT the same as "the repo has a
+      # hermetic test suite". datacat's is `npx playwright test`: it needs
+      # browsers and a running server, so promoting it into `verify` would
+      # break the floor's hermeticity rule AND the "green verify locally ⇒
+      # green CI" promise it exists to keep. Per templates/ci/README.md e2e is
+      # an UPGRADE rung, not the floor — so this is real work (write a unit
+      # suite), not a one-line verify edit.
+      if [ "$gate" = test ] && \
+         printf '%s' "$test_body" | grep -qE 'playwright|cypress|puppeteer|webdriver' && \
+         ! printf '%s' "$test_body" | grep -qE 'vitest|jest|mocha|node --test|bun test|ava '; then
+        absent="$absent test(e2e-only)"
+      else
+        gaps="$gaps $gate"          # repo owns it, verify just skips it
+      fi
     else
       absent="$absent $gate"        # nothing in the repo runs this gate
     fi
@@ -221,7 +239,7 @@ while IFS=$'\t' read -r name branch; do
   elif [ -n "$absent" ]; then
     # Not fixable by editing verify: the repo has no such script. Adding a
     # no-op to satisfy the floor would be theatre, so this is reported as work.
-    missing_list="${missing_list}  $name — no script for:$absent${gaps:+ (also missing from verify:$gaps)}\n"
+    missing_list="${missing_list}  $name — no hermetic script for:$absent${gaps:+ (also missing from verify:$gaps)}\n"
   elif [ -n "$gaps" ]; then
     weak_list="${weak_list}  $name — has the script but verify skips:$gaps\n"
   else
@@ -237,7 +255,9 @@ printf '▲ FIXABLE — verify omits a gate the repo already has\n'
 printf '%b' "${weak_list:-  (none)\n}"
 
 echo
-printf '✗ NEEDS REAL WORK — no script exists for a required gate\n'
+printf '✗ NEEDS REAL WORK — no hermetic script exists for a required gate\n'
+printf '  (test(e2e-only) = the repo has a `test` script, but it drives a\n'
+printf '   browser — an upgrade rung, not the floor. Needs a unit suite.)\n'
 printf '%b' "${missing_list:-  (none)\n}"
 
 echo
