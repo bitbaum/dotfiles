@@ -124,39 +124,34 @@ reference implementations already exist, lift them:
 **Rule:** the second time you hand-fix a class of bug, it becomes a gate here —
 not a third manual fix. This template is where "never fix it twice" lives.
 
-## Checking that a repo actually honours the floor
+#### The other half: is `verify` actually WIRED UP?
 
-Everything above is a *stated* rule. Stating a rule is not enforcing one, and
-the gap between the two is where this fleet has repeatedly lost weeks:
+Everything above audits what `verify` **contains**. A repo can satisfy every one
+of those rules and still have nothing that runs it — so the same audit now also
+answers the wiring question, in the same pass, from the workflow bodies it
+already fetches:
 
-```bash
-dotfiles/scripts/ci/check-verify-contract.sh            # this repo
-dotfiles/scripts/ci/check-verify-contract.sh --all      # every repo under ~/dev
-```
+| Rule | Reported as | Why it is a rule |
+|---|---|---|
+| some workflow invokes `verify` | `⊗ UNCALLED` | a repo can hand-copy the steps, then drift from them |
+| that invocation has no `--if-present` | `⊙ SOFTENED` | renaming the script turns its gate into a silent pass |
+| `verify` has no `\|\| true` / `--if-present` inside | `⊙ SOFTENED` | CI faithfully runs a gate that cannot fail |
 
-It asserts the contract **end to end** — `verify` exists, CI actually invokes
-it, and that invocation cannot be softened:
+botsmann is why this exists. Its `verify` was perfect — `format:check + lint +
+test + build` — so the content audit correctly called it **at floor**. Its CI
+never called it: the same four steps were hand-copied with `--if-present` on
+each, so renaming any of them would have been a silent pass.
 
-| Rule | Why it is a rule |
-|---|---|
-| `verify` exists | without it there is no single definition of "verified" |
-| CI invokes `verify` | a repo can hand-copy the steps, then drift from them |
-| no `--if-present` on it | renaming a script turns its gate into a silent pass |
-| no `continue-on-error` on that step | the result is computed, then discarded |
-| `verify` has no `\|\| true` inside | CI faithfully runs a gate that cannot fail |
+The rules live in `scripts/ci/verify-predicates.sh` rather than inline, so they
+can be tested against fixtures without reaching GitHub — the audit is remote-only
+by design, and a rule that can only be exercised by a live API call is a rule
+nobody re-tests after editing its regex. `test-verify-predicates.sh` (run by this
+repo's CI) proves each rule bites **and** that conforming shapes are not flagged.
+Both directions matter: a checker that cries wolf gets ignored, which is the same
+end state as no checker, reached more expensively.
 
-The earlier fleet audit checked only whether repos *declared* a `verify` script
-and found 21 of 21 did — which reads like success and was not. Running the
-end-to-end check found four real violations, including a repo whose CI
-hand-copied verify's four steps with `--if-present` on each, and one whose CI
-linted with `--max-warnings 0` while its own `verify` script did not — so
-`verify` on a laptop was **weaker** than the gate blocking the merge.
-
-**What it deliberately does not check**, so a pass is not read as more than it
-is: whether the checks inside `verify` are any good, whether the tests assert
-anything, or `|| true` elsewhere in CI (usually legitimate — flagging it gave
-nine false alarms out of nine here, and a checker that cries wolf gets ignored).
-
-The checker has its own negative tests (`test-check-verify-contract.sh`, run by
-this repo's CI) proving each rule still bites against a violating fixture. A
-gate that has never gone red is indistinguishable from one that cannot.
+**Audit remotes, never local checkouts.** A first attempt at this swept working
+trees under `~/dev` and reported two violations that had already been fixed on
+`main` — the checkouts were stale — which produced one redundant PR and one that
+would have silently dropped an unrelated gate added meanwhile. The default
+branch is the only ground truth about what defends a repo.

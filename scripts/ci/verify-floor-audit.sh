@@ -56,10 +56,20 @@ missing_list=""
 skipped_list=""
 unreadable_list=""
 discarded_list=""
+uncalled_list=""
+softened_list=""
 total=0
 
 command -v gh >/dev/null 2>&1 || { echo "gh CLI not found" >&2; exit 2; }
 command -v jq >/dev/null 2>&1 || { echo "jq not found" >&2; exit 2; }
+
+# The WIRING rules — does CI actually CALL verify, and unsoftened — live in
+# their own file so they can be tested against fixtures without reaching
+# GitHub. See the header there for why the content audit alone could not catch
+# botsmann: a repo can satisfy every rule about what `verify` CONTAINS while
+# nothing on the branch ever runs it.
+# shellcheck source=scripts/ci/verify-predicates.sh
+. "$(dirname "$0")/verify-predicates.sh"
 
 # Report every step that both runs a floor gate and discards its result.
 #
@@ -222,6 +232,9 @@ while IFS=$'\t' read -r name branch; do
   # Effectiveness probe: a gate CI runs and then ignores. Costs one listing
   # plus one fetch per workflow file, which is why it lives in a weekly cron
   # and not a per-push hook.
+  ci_calls_verify=no
+  ci_softened_in=""
+
   for wf in $(gh api "repos/$OWNER/$name/contents/.github/workflows?ref=$branch" \
                 --jq '.[] | select(.name | test("\\.ya?ml$")) | .name' 2>/dev/null); do
     wf_body=$(gh api "repos/$OWNER/$name/contents/.github/workflows/$wf?ref=$branch" \
@@ -232,7 +245,25 @@ while IFS=$'\t' read -r name branch; do
       [ -n "$hit" ] || continue
       discarded_list="${discarded_list}  $name — $hit\n"
     done <<< "$hits"
+
+    # Same fetched body, two more questions — free, since the bytes are here.
+    if ci_invokes_verify "$wf_body"; then
+      ci_calls_verify=yes
+      ci_verify_softened "$wf_body" && ci_softened_in="$wf"
+    fi
   done
+
+  # Orthogonal to the content audit above: a repo can be AT FLOOR on what
+  # `verify` contains and still have nothing on the branch that runs it.
+  if [ -n "$verify" ] && [ "$ci_calls_verify" = no ]; then
+    uncalled_list="${uncalled_list}  $name — CI never runs \`verify\`\n"
+  fi
+  if [ -n "$ci_softened_in" ]; then
+    softened_list="${softened_list}  $name — $ci_softened_in runs verify with --if-present\n"
+  fi
+  if [ -n "$verify" ] && verify_softens_itself "$verify"; then
+    softened_list="${softened_list}  $name — \`verify\` softens itself: $verify\n"
+  fi
 
   if [ -z "$verify" ]; then
     missing_list="${missing_list}  $name — no \`verify\` script at all\n"
@@ -264,6 +295,17 @@ echo
 printf '⊘ DISCARDED — CI runs a floor gate and throws the result away\n'
 printf '%b' "${discarded_list:-  (none)\n}"
 
+echo
+printf '⊗ UNCALLED — the repo defines `verify`, but no workflow runs it\n'
+printf '  (AT FLOOR above judges what verify CONTAINS; this judges whether\n'
+printf '   anything on the branch actually runs it. A repo can pass one and\n'
+printf '   fail the other — botsmann did.)\n'
+printf '%b' "${uncalled_list:-  (none)\n}"
+
+echo
+printf '⊙ SOFTENED — verify is invoked, or written, so that it cannot fail\n'
+printf '%b' "${softened_list:-  (none)\n}"
+
 
 if [ -n "$skipped_list" ]; then
   echo
@@ -284,7 +326,9 @@ echo "      with one exception, the discarded-gate check above."
 
 violations=$(( $(printf '%b' "$weak_list" | grep -c . || true) + \
                $(printf '%b' "$missing_list" | grep -c . || true) + \
-               $(printf '%b' "$discarded_list" | grep -c . || true) ))
+               $(printf '%b' "$discarded_list" | grep -c . || true) + \
+               $(printf '%b' "$uncalled_list" | grep -c . || true) + \
+               $(printf '%b' "$softened_list" | grep -c . || true) ))
 
 if [ "$violations" -gt 0 ] && [ "$WARN_ONLY" -eq 0 ]; then
   echo "verify-floor: $violations repo(s) below the floor" >&2
