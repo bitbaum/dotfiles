@@ -56,6 +56,8 @@ missing_list=""
 skipped_list=""
 unreadable_list=""
 discarded_list=""
+opaque_list=""
+forks_list=""
 uncalled_list=""
 softened_list=""
 total=0
@@ -105,19 +107,34 @@ echo "floor: verify must run lint AND typecheck AND test"
 echo
 
 repos=$(gh repo list "$OWNER" --limit "$LIMIT" --no-archived \
-          --json name,defaultBranchRef \
-          --jq '.[] | "\(.name)\t\(.defaultBranchRef.name // "")"' 2>/dev/null)
+          --json name,defaultBranchRef,isFork \
+          --jq '.[] | "\(.name)\t\(.defaultBranchRef.name // "")\t\(.isFork)"' 2>/dev/null)
 
 if [ -z "$repos" ]; then
   echo "could not list repos for $OWNER" >&2
   exit 2
 fi
 
-while IFS=$'\t' read -r name branch; do
+while IFS=$'\t' read -r name branch is_fork; do
   [ -n "$name" ] || continue
   # A repo with no default branch ref is empty — nothing to audit, say so.
   if [ -z "$branch" ]; then
     skipped_list="${skipped_list}  $name (empty repo)\n"
+    continue
+  fi
+
+  # A fork's build conventions belong to UPSTREAM. openclaw is a fork of
+  # openclaw/openclaw: it verifies through its own harness (verify.mjs ->
+  # `pnpm check` -> explicit tsgo typecheck + lint stages, then `pnpm test`)
+  # and its CI runs that harness on a remote testbox rather than calling
+  # `pnpm verify`. Measured against this fleet's floor it produced two findings,
+  # BOTH artefacts of the measurement: "no typecheck" (it uses tsgo) and "CI
+  # never runs verify" (CI runs the gates, not the alias). Adding a fleet-shaped
+  # `verify` there would also conflict on every upstream sync. Listed, never
+  # counted — a silently unaudited repo is the thing this script exists to
+  # prevent, so forks are named rather than dropped.
+  if [ "$is_fork" = true ]; then
+    forks_list="${forks_list}  $name (fork — upstream owns its build + CI conventions)\n"
     continue
   fi
 
@@ -142,8 +159,10 @@ while IFS=$'\t' read -r name branch; do
 
   verify=$(printf '%s' "$scripts" | jq -r '.verify // ""')
 
-  gaps=""       # gates the repo COULD run but verify does not
-  absent=""     # gates the repo has no script for at all
+  gaps=""          # gates the repo COULD run but verify does not
+  absent=""        # gates the repo has no script for at all
+  opaque_gates=""  # gates we cannot see EITHER WAY, because verify delegates
+                   # to a script file this audit does not execute or parse
 
   # Expand `npm run X` / `pnpm X` inside verify two levels deep, so a gate
   # counts whether it is reached via a named script or run directly. Matching
@@ -170,6 +189,48 @@ while IFS=$'\t' read -r name branch; do
   expanded=$(expand_once "$verify")
   expanded=$(expand_once "$expanded")
 
+  # Follow ONE level of sub-package delegation: `npm --prefix app run verify`
+  # and `cd frontend && npm run lint` both leave this package.json entirely, so
+  # without following them the audit sees an opaque command and concluded — for
+  # printcraft — that verify skipped all three gates. It skipped none; the gates
+  # live in app/package.json. Fetching the sub-manifest turns a confident wrong
+  # answer into the real one.
+  for pair in $(printf '%s' "$verify" \
+                  | grep -oE -- '--prefix[[:space:]]+[A-Za-z0-9._/-]+[[:space:]]+(run[[:space:]]+)?[A-Za-z0-9:_-]+|cd[[:space:]]+[A-Za-z0-9._/-]+[[:space:]]*&&[[:space:]]*(npm|pnpm|yarn)([[:space:]]+run)?[[:space:]]+[A-Za-z0-9:_-]+' \
+                  | tr -s ' ' '|' | sort -u); do
+    sub_dir=$(printf '%s' "$pair" | awk -F'|' '{print $2}')
+    sub_script=$(printf '%s' "$pair" | awk -F'|' '{print $NF}')
+    [ -n "$sub_dir" ] && [ -n "$sub_script" ] || continue
+    sub_pkg=$(gh api "repos/$OWNER/$name/contents/$sub_dir/package.json?ref=$branch" \
+                --jq '.content' 2>/dev/null | tr -d '\n' | base64 -d 2>/dev/null)
+    [ -n "$sub_pkg" ] || continue
+    sub_scripts=$(printf '%s' "$sub_pkg" | jq -r '.scripts // {}' 2>/dev/null)
+    [ -n "$sub_scripts" ] && [ "$sub_scripts" != null ] || continue
+    sub_body=$(printf '%s' "$sub_scripts" | jq -r --arg k "$sub_script" '.[$k] // ""')
+    [ -n "$sub_body" ] || continue
+    expanded="$expanded ; $sub_body"
+    # One more hop inside the sub-package, so `verify -> lint` resolves to the
+    # tool it actually runs.
+    for ref in $(printf '%s' "$sub_body" | grep -oE '(npm|pnpm|yarn)( run)? [a-zA-Z0-9:_-]+' \
+                   | awk '{print $NF}' | sort -u); do
+      expanded="$expanded ; $(printf '%s' "$sub_scripts" | jq -r --arg k "$ref" '.[$k] // ""')"
+    done
+    all_bodies="$all_bodies
+$(printf '%s' "$sub_scripts" | jq -r 'to_entries[] | "\(.key) \(.value)"')"
+  done
+
+  # Does verify hand off to a SCRIPT FILE this audit cannot read? openclaw's
+  # verify is `node scripts/verify.mjs`, which runs `pnpm check` then `pnpm
+  # test`, and check.mjs has explicit typecheck (tsgo) and lint stages — a
+  # superset of the floor. Reading arbitrary JS to prove that is not tractable
+  # here, so the honest output is "cannot tell", NOT "gate missing". Absence of
+  # evidence was being reported as evidence of absence.
+  verify_is_opaque=no
+  if printf '%s' "$expanded" \
+       | grep -qE '(^|[^a-z])(node|bun|ts-node|tsx|bash|sh|python3?|make)[[:space:]]+[A-Za-z0-9._/-]+\.(mjs|cjs|js|ts|sh|py)'; then
+    verify_is_opaque=yes
+  fi
+
   # The repo's own `test` script, expanded — used to tell a hermetic unit suite
   # from an e2e runner wearing the same script name.
   test_body=$(printf '%s' "$scripts" | jq -r '.test // ""')
@@ -180,7 +241,11 @@ while IFS=$'\t' read -r name branch; do
   all_bodies=$(printf '%s' "$scripts" | jq -r 'to_entries[] | "\(.key) \(.value)"')
 
   gate_re_lint='eslint|biome (lint|check)|next lint|oxlint|standard'
-  gate_re_type='tsc |tsc$|vue-tsc|type-?check|svelte-check|astro check'
+  # `tsgo` is the TypeScript-Go compiler; openclaw typechecks with it exclusively
+  # (tsgo:core / tsgo:prod / tsgo:test) and was reported as having no typecheck
+  # at all. A gate is satisfied by the TOOL that runs — including tools this
+  # list learned about late.
+  gate_re_type='tsc |tsc$|tsgo|vue-tsc|type-?check|svelte-check|astro check'
   gate_re_test='vitest|jest|playwright|node --test|mocha|ava |bun test|\btest\b'
 
   for gate in lint typecheck test; do
@@ -197,10 +262,20 @@ while IFS=$'\t' read -r name branch; do
     #     count without this script having to see through them.
     #  2. verify runs the TOOL inline with no named script — fleetcrown calls
     #     `tsc --noEmit` straight from verify.
-    if printf '%s' "$verify" | grep -qE "(^|[^a-z:_-])(${gate}|type-check)([^a-z:_-]|$)"; then
+    # Checked against the whole REACHABLE call graph, not just verify's own
+    # text, so a gate named inside a sub-package (printcraft: app/package.json)
+    # counts the same as one named directly.
+    if printf '%s' "$expanded" | grep -qE "(^|[^a-z:_-])(${gate}|type-check)([^a-z:_-]|$)"; then
       continue
     fi
     if printf '%s' "$expanded" | grep -qE "$re"; then
+      continue
+    fi
+
+    # Verify disappears into a script file. We cannot see the gate, and we
+    # cannot see its absence either — so say so instead of guessing.
+    if [ "$verify_is_opaque" = yes ]; then
+      opaque_gates="$opaque_gates $gate"
       continue
     fi
 
@@ -273,6 +348,12 @@ while IFS=$'\t' read -r name branch; do
     missing_list="${missing_list}  $name — no hermetic script for:$absent${gaps:+ (also missing from verify:$gaps)}\n"
   elif [ -n "$gaps" ]; then
     weak_list="${weak_list}  $name — has the script but verify skips:$gaps\n"
+  elif [ -n "$opaque_gates" ]; then
+    # Reported, never counted. "I could not see it" is a different statement
+    # from "it is not there", and collapsing the two is how this audit told the
+    # fleet that openclaw — which typechecks with tsgo and lints in an explicit
+    # check stage — had no typecheck at all.
+    opaque_list="${opaque_list}  $name — verify delegates to a script; could not verify:$opaque_gates\n"
   else
     ok_list="${ok_list}  $name\n"
   fi
@@ -296,6 +377,15 @@ printf '⊘ DISCARDED — CI runs a floor gate and throws the result away\n'
 printf '%b' "${discarded_list:-  (none)\n}"
 
 echo
+printf '? OPAQUE — verify hands off to a script file; not a violation, unproven\n'
+printf '  ("could not read it" is not "it is not there". openclaw is why this\n'
+printf '   column exists — its verify.mjs runs `pnpm check` then `pnpm test`,\n'
+printf '   with explicit tsgo-typecheck and lint stages, i.e. ABOVE the floor,\n'
+printf '   and was reported as having none of them. It is now excluded as a\n'
+printf '   fork, but the blind spot it exposed is real for any repo.)\n'
+printf '%b' "${opaque_list:-  (none)\n}"
+
+echo
 printf '⊗ UNCALLED — the repo defines `verify`, but no workflow runs it\n'
 printf '  (AT FLOOR above judges what verify CONTAINS; this judges whether\n'
 printf '   anything on the branch actually runs it. A repo can pass one and\n'
@@ -311,6 +401,12 @@ if [ -n "$skipped_list" ]; then
   echo
   echo "· skipped (not a JS repo / empty)"
   printf '%b' "$skipped_list"
+fi
+
+if [ -n "$forks_list" ]; then
+  echo
+  echo "· forks (not audited — the floor is this fleet's convention, not upstream's)"
+  printf '%b' "$forks_list"
 fi
 
 if [ -n "$unreadable_list" ]; then

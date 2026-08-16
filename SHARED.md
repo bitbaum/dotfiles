@@ -24,11 +24,22 @@ the inventory underneath it is **generated**, and the number it produces is a
 |---|---|---|
 | [`ai-forms`](https://github.com/maonakamoto/ai-forms) | `npm i github:maonakamoto/ai-forms#v0.1.0` | per-app "fill this form from prose" + conversational refinement. Headless — ships **no markup**, so each app keeps its own styling. |
 | [`ai-ration`](https://github.com/maonakamoto/ai-ration) | `npm i github:maonakamoto/ai-ration#v0.2.0` | LLM free-tier survival: multi-vendor fallback chain, the three kinds of 429, per-user fair-share rationing, `modelCost()` so a fallback can never silently bill. |
+| [`threadkit`](https://github.com/maonakamoto/threadkit) | ⚠️ **not installable yet — no tag cut** | multi-participant message threads where *permission is participation*, not a role or an ownership column. Headless pure functions, so "who may read this" is unit-testable instead of buried in a `WHERE` clause. AI participants obey the same visibility rules. |
 
 **Adopted:** `ai-forms` — fleetcrown, evig, aoz-housing, revampit,
 surf-your-life. `ai-ration` — fleetcrown.
 **Not yet:** orangecat and kivvi still carry their own form-assist; kivvi, evig,
 botsmann still carry their own provider layers.
+
+**`threadkit` is listed but cannot be installed yet.** Its README says
+`npm install threadkit`; the package is not on npm and the repo has no tags,
+and its publish workflow triggers *on a version tag*. So the one command it
+documents fails today. Listed anyway, deliberately — this table is the fleet's
+discovery surface, and a shared package nobody can find is one that gets
+rewritten by hand. It replaces exactly the bug that
+[`single-tenant-prod-hides-unscoped-queries`] records: role-derived access that
+is correct at one doctor / one tenant / one org and silently wrong at two.
+Cutting `v0.1.0` publishes it and makes this row real.
 
 ## What is worth extracting next
 
