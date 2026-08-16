@@ -157,6 +157,13 @@ main() {
       [ -d "$d/.git" ] || continue
       check_repo "${d%/}"
     done
+  elif [ -n "${1:-}" ]; then
+    # An explicit path must WIN. The first version ignored its argument and
+    # silently checked whatever repo the shell happened to be in, reporting a
+    # pass for a repo nobody asked about — the worst possible bug in a tool
+    # whose only product is a trustworthy answer.
+    [ -d "$1" ] || { red "not a directory: $1"; return 1; }
+    check_repo "${1%/}"
   else
     local dir
     dir="$(git rev-parse --show-toplevel 2>/dev/null || pwd)"
