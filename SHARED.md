@@ -24,22 +24,40 @@ the inventory underneath it is **generated**, and the number it produces is a
 |---|---|---|
 | [`ai-forms`](https://github.com/maonakamoto/ai-forms) | `npm i github:maonakamoto/ai-forms#v0.1.0` | per-app "fill this form from prose" + conversational refinement. Headless — ships **no markup**, so each app keeps its own styling. |
 | [`ai-ration`](https://github.com/maonakamoto/ai-ration) | `npm i github:maonakamoto/ai-ration#v0.2.0` | LLM free-tier survival: multi-vendor fallback chain, the three kinds of 429, per-user fair-share rationing, `modelCost()` so a fallback can never silently bill. |
-| [`threadkit`](https://github.com/maonakamoto/threadkit) | ⚠️ **not installable yet — no tag cut** | multi-participant message threads where *permission is participation*, not a role or an ownership column. Headless pure functions, so "who may read this" is unit-testable instead of buried in a `WHERE` clause. AI participants obey the same visibility rules. |
+| [`threadkit`](https://github.com/maonakamoto/threadkit) | `npm i threadkit` | multi-participant message threads where *permission is participation*, not a role or an ownership column. Headless pure functions, so "who may read this" is unit-testable instead of buried in a `WHERE` clause. AI participants obey the same visibility rules. **ESM-only.** |
 
 **Adopted:** `ai-forms` — fleetcrown, evig, aoz-housing, revampit,
-surf-your-life. `ai-ration` — fleetcrown.
+surf-your-life. `ai-ration` — fleetcrown. `threadkit` — **nobody yet**.
 **Not yet:** orangecat and kivvi still carry their own form-assist; kivvi, evig,
 botsmann still carry their own provider layers.
 
-**`threadkit` is listed but cannot be installed yet.** Its README says
-`npm install threadkit`; the package is not on npm and the repo has no tags,
-and its publish workflow triggers *on a version tag*. So the one command it
-documents fails today. Listed anyway, deliberately — this table is the fleet's
-discovery surface, and a shared package nobody can find is one that gets
-rewritten by hand. It replaces exactly the bug that
-[`single-tenant-prod-hides-unscoped-queries`] records: role-derived access that
-is correct at one doctor / one tenant / one org and silently wrong at two.
-Cutting `v0.1.0` publishes it and makes this row real.
+A package with zero adopters removes zero duplication — publishing is the
+cheap half. `threadkit` is listed here on its first day precisely so it does
+not become another extraction nobody wired up.
+
+**`threadkit` shipped 2026-08-16** — `v0.1.0` on the public registry, published
+by the tagged workflow with an SLSA provenance attestation, so the registry can
+prove which commit built the tarball. Verified from outside the fleet, not from
+CI: installed from the public registry into an empty project, imported, and got
+17 named exports plus `dist/index.d.ts`.
+
+It exists because of the bug
+[`single-tenant-prod-hides-unscoped-queries`](https://github.com/maonakamoto/dotfiles)
+records: role-derived access is correct at one doctor / one tenant / one org and
+silently wrong at two. `canRead(thread, user)` cannot express that bug, because
+there is no role to check.
+
+**Adoption candidates, in order of how much duplicated code it removes:**
+
+| Repo | What it replaces there |
+|---|---|
+| `vitareba` | care-team messaging — the exact clinic case: threads whose reader set is "the care team", not "the patient's doctor" |
+| `orangecat` | Cat DMs / conversation visibility |
+| `fleetcrown` | agent↔human threads, where an AI participant already needs the same rules as a person |
+
+**ESM-only** (`"type": "module"`, no `require` condition), so a CJS consumer
+cannot `require()` it. Every candidate above is ESM already; note it before
+adopting anywhere that is not.
 
 ## What is worth extracting next
 
