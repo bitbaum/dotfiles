@@ -86,6 +86,26 @@ exists but silently does nothing passes. `sbb-lost-found` is the live example �
 `next lint` prompts interactively because the repo has a flat config Next 14
 cannot read, so lint has never actually run.
 
+#### `continue-on-error` on a gate is worse than no gate
+
+One effectiveness hole *is* checked, because the fleet already fell down it.
+evig's CI ran the full unit suite on every PR and discarded the result with
+`continue-on-error: true` — added as "non-blocking while the suite matures",
+never flipped back. The suite matured to 7,769 tests. When the 2026-07-28
+`primary-*` → `success-*` token sweep broke 25 assertions in 15 suites, CI ran
+them, saw them fail, and reported green for three weeks.
+
+That is strictly worse than having no test job: an absent gate is *visibly*
+absent, while a discarded one manufactures a ✓. The audit now flags any step
+that runs a floor gate under `continue-on-error`. It is scoped to floor gates
+on purpose — a best-effort step with a real fallback (orangecat's `cd.yml`
+artifact download, which builds from source if the download fails) is a
+legitimate use and is not flagged.
+
+**Rule:** if a check is not ready to block, don't wire it into CI green. Run it
+on a schedule, or in a job nothing depends on — but never as a step that
+reports success while failing.
+
 ## The maturity ladder (add per-repo as the secrets/infra appear)
 
 The floor is rung 0. Reach for the next rung when the repo earns it — the
