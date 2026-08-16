@@ -39,7 +39,7 @@ _add_to_path() {
     esac
 }
 _add_to_path "$HOME/.local/bin"
-_add_to_path "$HOME/dev/revampit/scripts"
+_add_to_path "$HOME/dev/evig/scripts"
 _add_to_path "$HOME/dev/fitfoot"
 _add_to_path "$HOME/.opencode/bin"
 _add_to_path "$HOME/.bun/bin"
@@ -205,16 +205,16 @@ alias ghrc='gh repo clone'
 # ═══════════════════════════════════════════════════
 # Dev Stack Manager
 # ═══════════════════════════════════════════════════
-# Usage: dev up revampit | dev down orangecat | dev status
+# Usage: dev up evig | dev down orangecat | dev status
 dev() {
     local action="${1:-status}" project="${2:-}"
 
     case "$action" in
         up)
             case "$project" in
-                revampit|ri)
-                    echo "Starting RevampIT stack..."
-                    docker compose -f ~/dev/revampit/docker-compose.yml up -d
+                evig|ev)
+                    echo "Starting evig stack..."
+                    docker compose -f ~/dev/evig/docker-compose.yml up -d
                     ;;
                 orangecat|oc)
                     echo "Starting OrangeCat (Supabase) stack..."
@@ -224,16 +224,16 @@ dev() {
                     ;;
                 *)
                     echo "Unknown project: $project"
-                    echo "Available: revampit (ri), orangecat (oc)"
+                    echo "Available: evig (ev), orangecat (oc)"
                     return 1
                     ;;
             esac
             ;;
         down)
             case "$project" in
-                revampit|ri)
-                    echo "Stopping RevampIT stack..."
-                    docker compose -f ~/dev/revampit/docker-compose.yml down
+                evig|ev)
+                    echo "Stopping evig stack..."
+                    docker compose -f ~/dev/evig/docker-compose.yml down
                     ;;
                 orangecat|oc)
                     echo "Stopping OrangeCat (Supabase) stack..."
@@ -241,12 +241,12 @@ dev() {
                     ;;
                 all)
                     echo "Stopping all dev stacks..."
-                    docker compose -f ~/dev/revampit/docker-compose.yml down 2>/dev/null
+                    docker compose -f ~/dev/evig/docker-compose.yml down 2>/dev/null
                     (cd ~/dev/orangecat && npx supabase stop) 2>/dev/null
                     ;;
                 *)
                     echo "Unknown project: $project"
-                    echo "Available: revampit (ri), orangecat (oc), all"
+                    echo "Available: evig (ev), orangecat (oc), all"
                     return 1
                     ;;
             esac
@@ -257,7 +257,7 @@ dev() {
             ;;
         *)
             echo "Usage: dev <up|down|status> [project]"
-            echo "Projects: revampit (ri), orangecat (oc), all"
+            echo "Projects: evig (ev), orangecat (oc), all"
             ;;
     esac
 }

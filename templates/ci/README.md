@@ -206,8 +206,8 @@ reference implementations already exist, lift them:
 | Secret scan (gitleaks) in CI | `orangecat/.github/workflows/ci.yml` (`security` job) | always, once green |
 | Committed-secret pre-commit hook | `botsmann/.husky/pre-commit` | repo has contributors |
 | Dependency audit gate | `orangecat` `security` job | always, once green |
-| e2e against a seeded DB | `revampit/.github/workflows/ci.yml` (`e2e-local` job) | repo has Playwright specs |
-| Migration drift replay | `revampit` (`migrations` job) | repo owns SQL migrations |
+| e2e against a seeded DB | `evig/.github/workflows/ci.yml` (`e2e-local` job) | repo has Playwright specs |
+| Migration drift replay | `evig` (`migrations` job) | repo owns SQL migrations |
 | CodeQL SAST | `orangecat/.github/workflows/codeql.yml` | repo is security-sensitive |
 | P0 e2e matrix + build artifact | `orangecat/.github/workflows/ci.yml` | flagship / shipping repo |
 
