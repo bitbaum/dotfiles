@@ -286,11 +286,22 @@ $(printf '%s' "$sub_scripts" | jq -r 'to_entries[] | "\(.key) \(.value)"')"
     #     count without this script having to see through them.
     #  2. verify runs the TOOL inline with no named script — fleetcrown calls
     #     `tsc --noEmit` straight from verify.
-    # A `test` gate that reaches no test files is satisfied on paper and empty
-    # in fact. Checked BEFORE the "verify names it" shortcut, because naming a
-    # script is exactly the evidence that turns out to be worthless here.
-    if [ "$gate" = test ] && [ "$test_files" = 0 ]; then
-      absent="$absent test(no-test-files)"
+    # A test RUNNER with nothing to discover is empty in fact, however it reads
+    # on paper — sbb-lost-found had `test: jest` in four packages and not one
+    # test file in the repo, so the script could only ever fail and was
+    # therefore never wired into verify.
+    #
+    # Scoped to file-DISCOVERING runners on purpose. A bespoke script carries
+    # its own assertions and needs no test files to be real: ivy-portal's
+    # `test` is `node scripts/smoke.mjs`, which boots the actual server,
+    # asserts a 200 and exits with the true code. Flagging that would be
+    # moralising about its shape rather than measuring whether it defends
+    # anything — and this script has already had to unlearn accusing repos of
+    # things it could not demonstrate.
+    if [ "$gate" = test ] && [ "$test_files" = 0 ] && \
+       printf '%s' "$test_body" \
+         | grep -qE '(^|[^a-z-])(jest|vitest|mocha|ava|playwright|cypress|bun test|node[[:space:]]+--test)([^a-z-]|$)'; then
+      absent="$absent test(runner-no-files)"
       continue
     fi
 
@@ -402,9 +413,10 @@ echo
 printf '✗ NEEDS REAL WORK — no hermetic script exists for a required gate\n'
 printf '  (test(e2e-only)      = has a `test` script, but it drives a browser —\n'
 printf '                         an upgrade rung, not the floor.\n'
-printf '   test(no-test-files) = has a `test` script and NO test files. Worse\n'
-printf '                         than no script: it can only ever fail, so it\n'
-printf '                         never gets wired in, and its absence hides.)\n'
+printf '   test(runner-no-files) = `test` runs a file-discovering runner (jest,\n'
+printf '                         vitest, …) and the branch has NO test files, so\n'
+printf '                         it can only ever fail. A bespoke script that\n'
+printf '                         carries its own assertions is NOT this.)\n'
 printf '%b' "${missing_list:-  (none)\n}"
 
 echo
