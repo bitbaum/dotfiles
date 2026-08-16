@@ -22,9 +22,14 @@ on:
         default: ci.yml
       rearm_workflows:
         description: >
-          Comma-separated workflows to dispatch after a merge. Load-bearing: a
-          push made with GITHUB_TOKEN triggers NO workflows, so without this
-          merges land and silently never deploy.
+          SPACE-separated workflows to dispatch after a merge, e.g.
+          "ci.yml deploy.yml". The script word-splits this value, so a
+          comma-separated list becomes ONE bogus token, every dispatch fails,
+          and the only symptom is that nothing deploys.
+
+          Load-bearing: a push made with GITHUB_TOKEN triggers NO workflows, so
+          without a working re-arm, merges land and silently never ship — and
+          the sweep still exits 0, so the automation looks healthy throughout.
         type: string
         default: ''
       max_run_attempts:
