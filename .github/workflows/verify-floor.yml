@@ -26,7 +26,14 @@ permissions:
 jobs:
   audit:
     runs-on: ubuntu-latest
-    timeout-minutes: 10
+    # 10 was set when the audit read one file per repo. It now reads
+    # package.json, the git tree (to count test files), the workflow listing and
+    # every workflow body — roughly 150-200 API calls across the fleet, and
+    # local runs take 10-15 minutes. A timeout that kills the job mid-sweep
+    # produces no report at all, which is the precise failure this audit exists
+    # to find: a check that quietly stops checking. Weekly, so the ceiling is
+    # free; it is a backstop against a hang, not a performance target.
+    timeout-minutes: 30
     steps:
       - uses: actions/checkout@v7
 
