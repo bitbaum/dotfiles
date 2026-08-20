@@ -29,13 +29,27 @@ ok() { printf '  ✓ %s\n' "$1"; PASS=$((PASS + 1)); }
 no() { printf '  ✗ %s\n' "$1"; FAIL=$((FAIL + 1)); }
 
 # run_sweep <conclusion> <failed-steps> <run-attempt> [deploy-workflow] [deployed-sha] [running]
+#
+# Optional globals, consumed and RESET on every call so one case's fixture can
+# never leak into the next:
+#   RS_STATUS    base run status        (default completed)
+#   RS_HEADSHA   base run's headSha     (default the branch tip)
+#   RS_PRS       JSON array for pr list (default [])
+#   RS_VIEW      JSON for pr view       (default MERGEABLE/CLEAN)
+#
 # Emits the sweep's combined output; records gh calls in $GH_LOG.
 run_sweep() {
   local conclusion="$1" failed_steps="${2:-}" attempt="${3:-1}"
   local deploy_wf="${4:-}" deployed_sha="${5:-}" deploy_running="${6:-0}"
+  local status_field="${RS_STATUS:-completed}"
+  local head_field="${RS_HEADSHA:-basesha000000}"
   local dir; dir="$(mktemp -d)"
   GH_LOG="$dir/gh-calls.log"
   : > "$GH_LOG"
+  printf '%s\n' "${RS_PRS:-[]}" > "$dir/prs.json"
+  printf '%s\n' "${RS_VIEW:-{\"mergeable\":\"MERGEABLE\",\"mergeStateStatus\":\"CLEAN\"}}" > "$dir/view.json"
+  printf '%b\n' "${RS_REDJOBS:-Some Red Job}" > "$dir/redjobs.txt"
+  RS_STATUS=""; RS_HEADSHA=""; RS_PRS=""; RS_VIEW=""; RS_REDJOBS=""
 
   cat > "$dir/gh" <<FAKE
 #!/usr/bin/env bash
@@ -47,12 +61,19 @@ case "\$ARGS" in
   # the only thing separating them, since all three start with "run list".
   "run list"*"--json status"*)      printf '%s\n' '$deploy_running' ;;
   "run list"*"--status success"*)   printf '%s\n' '$deployed_sha' ;;
-  "run list"*)                      printf '%s\n' '{"databaseId":42,"status":"completed","conclusion":"$conclusion","headSha":"basesha000000"}' ;;
+  "run list"*)                      printf '%s\n' '{"databaseId":42,"status":"$status_field","conclusion":"$conclusion","headSha":"$head_field"}' ;;
   *"/actions/runs/"*"/jobs"*)       printf '%s\n' '$failed_steps' ;;
   "run rerun"*)                     echo "rerun dispatched" ;;
   *"/actions/runs/"*)               printf '%s\n' '$attempt' ;;
-  "run view"*)                      printf '%s\n' 'Some Red Job' ;;
-  "pr list"*)                       echo "[]" ;;
+  "run view"*)                      cat "$dir/redjobs.txt" ;;
+  # The deadlock-name block also calls pr list, with a --jq the real gh would
+  # apply; this fake returns the raw payload either way, which that block only
+  # ever prints. The MERGE loop parses it with real jq, so fixtures must be
+  # well-formed JSON.
+  "pr list"*)                       cat "$dir/prs.json" ;;
+  "pr view"*)                       cat "$dir/view.json" ;;
+  "pr merge"*)                      echo "merged" ;;
+  "api -X PUT"*"update-branch"*)    echo "updated" ;;
   "workflow run"*)                  echo "dispatched" ;;
   *) echo "UNHANDLED gh call: \$ARGS" >&2; exit 1 ;;
 esac
@@ -176,6 +197,81 @@ if run_sweep failure 'Run tests' 1 deploy.yml oldsha00 0; then
   [ "$(deploys)" -eq 0 ] \
     && ok 'NEVER ships a red base, even though the sweep continues past one' \
     || no 'NEVER ships a red base, even though the sweep continues past one'
+fi
+
+echo "auto-merge sweep — coverage ported from orangecat"
+# orangecat was the other repo with sweep tests, and converting it to the
+# canonical deletes them. These are the cases its suite had that this one did
+# not — moved here BEFORE the deletion, so no assertion is ever lost between
+# the two commits.
+
+merges() { grep -c '^pr merge' "$GH_LOG" 2>/dev/null; }
+
+# 12. A base run still in progress is not a verdict either way — defer, and do
+#     NOT re-run it (re-running an in-flight run would cancel it).
+if RS_STATUS=in_progress run_sweep '' '' 1; then
+  if printf '%s' "$SWEEP_OUT" | grep -q 'still running' && [ "$(reruns)" -eq 0 ]; then
+    ok 'defers while the base run is still going, without re-running it'
+  else
+    no 'defers while the base run is still going, without re-running it'
+  fi
+fi
+
+# 13. The newest base CI run belonging to an OLDER commit means the current tip
+#     is unjudged. Merging on that green would batch unverified commits — the
+#     exact thing one-car-per-sweep exists to prevent.
+if RS_HEADSHA=oldsha000 run_sweep success '' 1; then
+  printf '%s' "$SWEEP_OUT" | grep -q 'waiting for CI to catch up' \
+    && ok 'waits when the newest base run belongs to an older commit' \
+    || no 'waits when the newest base run belongs to an older commit'
+fi
+
+# A PR fixture generator for the red-base carve-out. The rollup names decide
+# everything: the base fails 'Some Red Job', and whether this PR proves that
+# job green is the whole question.
+pr_fixture() { # <rollup-check-names, comma-separated>
+  local checks="" name
+  local IFS=','
+  for name in $1; do
+    checks="${checks:+$checks,}{\"status\":\"COMPLETED\",\"conclusion\":\"SUCCESS\",\"name\":\"$name\"}"
+  done
+  printf '[{"number":7,"title":"the fix","isDraft":false,"mergeable":"MERGEABLE","mergeStateStatus":"UNSTABLE","labels":[],"createdAt":"2026-01-01T00:00:00Z","statusCheckRollup":[%s]}]' "$checks"
+}
+
+# 14. THE CARVE-OUT ITSELF: a PR green on every job the base fails may merge
+#     onto the red base. Its checks ran on the MERGE result, so green there is
+#     direct evidence the post-merge base is better than the pre-merge base —
+#     and without this, the fix is trapped behind the very redness it repairs.
+if RS_PRS="$(pr_fixture 'Some Red Job,lint')" run_sweep failure 'Run tests' 1; then
+  [ "$(merges)" -ge 1 ] \
+    && ok 'merges a PR that is green on every job the red base fails' \
+    || no 'merges a PR that is green on every job the red base fails'
+fi
+
+# 15. A PR that never RAN the failing job proves nothing about it. Letting it
+#     through would merge unrelated work onto a broken base — the failure mode
+#     the guard exists for.
+if RS_PRS="$(pr_fixture 'lint,typecheck')" run_sweep failure 'Run tests' 1; then
+  [ "$(merges)" -eq 0 ] \
+    && ok 'refuses a PR that does not run the failing job at all' \
+    || no 'refuses a PR that does not run the failing job at all'
+fi
+
+# 16. Covering SOME failing jobs is covering none: the uncovered one still
+#     lands broken.
+if RS_REDJOBS='Some Red Job\nOther Red Job' \
+   RS_PRS="$(pr_fixture 'Some Red Job,lint')" run_sweep failure 'Run tests' 1; then
+  [ "$(merges)" -eq 0 ] \
+    && ok 'refuses a PR that covers only SOME of the failing jobs' \
+    || no 'refuses a PR that covers only SOME of the failing jobs'
+fi
+
+# 17. A green base merges a green PR without ever asking which jobs failed —
+#     the carve-out must be invisible on the happy path.
+if RS_PRS="$(pr_fixture 'lint')" run_sweep success '' 1; then
+  [ "$(merges)" -ge 1 ] \
+    && ok 'a green base merges normally, never consulting the carve-out' \
+    || no 'a green base merges normally, never consulting the carve-out'
 fi
 
 printf '\n%d passed, %d failed\n' "$PASS" "$FAIL"
