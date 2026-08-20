@@ -170,7 +170,7 @@ calibration for.
 - a step that runs a floor gate under `continue-on-error` → `⊘ DISCARDED`
 - a file-discovering test runner with no test files → `test(runner-no-files)`
 - a `test` script that only drives a browser → `test(e2e-only)`
-- `verify` defined but no workflow runs it → `⊗ UNCALLED`
+- a gate `verify` composes that no workflow runs → `⊗ UNCALLED`
 - `verify` invoked or written so it cannot fail → `⊙ SOFTENED`
 
 **What is still yours to prove:** that each gate is *effective*. No central
@@ -223,14 +223,47 @@ already fetches:
 
 | Rule | Reported as | Why it is a rule |
 |---|---|---|
-| some workflow invokes `verify` | `⊗ UNCALLED` | a repo can hand-copy the steps, then drift from them |
-| that invocation has no `--if-present` | `⊙ SOFTENED` | renaming the script turns its gate into a silent pass |
+| every gate in `verify` also runs in CI | `⊗ UNCALLED` | a repo can hand-copy the steps, then drift from them |
+| …by name rather than via `verify` | `≡ DECOMPOSED` | **not a violation** — see below |
+| no `--if-present` on any of them | `⊙ SOFTENED` | renaming the script turns its gate into a silent pass |
 | `verify` has no `\|\| true` / `--if-present` inside | `⊙ SOFTENED` | CI faithfully runs a gate that cannot fail |
 
 botsmann is why this exists. Its `verify` was perfect — `format:check + lint +
 test + build` — so the content audit correctly called it **at floor**. Its CI
 never called it: the same four steps were hand-copied with `--if-present` on
 each, so renaming any of them would have been a silent pass.
+
+#### …but "calls `verify`" was a proxy, and the proxy was wrong
+
+The first version of this rule matched the **string** `npm run verify`. The
+property worth having is weaker and more useful:
+
+> every gate `verify` composes also runs in CI, **unsoftened**.
+
+Calling `npm run verify` satisfies that. So does calling each script by name —
+which `aoz-housing` does deliberately, fanning lint+typecheck, unit tests and
+build into parallel jobs each with its own artifact. It was reported
+`⊗ UNCALLED` from this audit's first run onward while in fact running all three
+gates on every PR. **The rule was asking a conforming repo to serialize the
+slowest pipeline in the fleet to satisfy a regex.**
+
+botsmann is still caught, because the distinction is not "hand-copied" but
+"hand-copied with a soft landing": every one of its steps carried
+`--if-present`, so a rename passed silently. aoz-housing's carry none, so a
+rename fails CI exactly as hard as it fails `verify`.
+
+The residual risk in the decomposed shape is real and is why it stays reported
+rather than being dropped: **a gate added to `verify` later does not reach CI by
+itself.** The check now watches for precisely that — it decomposes `verify` and
+demands each part appear — instead of watching for a word.
+
+That is the second false positive from this audit's own rules in one day, after
+the no-test-files rule flagged `ivy-portal`. Both had the same shape: **the rule
+encoded the first example it was written from, not the property that example
+illustrated.** botsmann's hand-copy was softened, so "hand-copied" got treated as
+the defect; `jest` with no files can only fail, so "no test files" got treated as
+the defect. Write the rule against the property, then find a conforming repo that
+does it differently and check the rule stays quiet.
 
 The rules live in `scripts/ci/verify-predicates.sh` rather than inline, so they
 can be tested against fixtures without reaching GitHub — the audit is remote-only
@@ -239,6 +272,53 @@ nobody re-tests after editing its regex. `test-verify-predicates.sh` (run by thi
 repo's CI) proves each rule bites **and** that conforming shapes are not flagged.
 Both directions matter: a checker that cries wolf gets ignored, which is the same
 end state as no checker, reached more expensively.
+
+#### The audit's own worst bug: a failed fetch reported as a finding
+
+Every remote read was `gh api … 2>/dev/null`, and the empty string a failure
+yields was then read as a **fact**. One sweep on 2026-08-16 produced **four
+wrong verdicts** from that single conflation:
+
+| Repo | Reported | Truth |
+|---|---|---|
+| `vitareba` | "no package.json — not a JS repo" | live Next.js app, 1,339-byte package.json |
+| `aoz-housing` | "no package.json — not a JS repo" | live Next.js app, 2,011-byte package.json |
+| `ai-forms` | "CI never runs `verify`" | `ci.yml` line 19 is `npm run verify` |
+| `fleetcrown` | "CI never runs `verify`" | `ci.yml` line 52 is `npm run verify` |
+
+Two of them were **silently dropped from the floor entirely** — not flagged,
+not counted, just absent from the report. An audit that quietly stops auditing
+a repo is the exact failure this file exists to prevent, committed by the file's
+own enforcement script.
+
+**The tell was arithmetic, not intuition.** Two runs an hour apart inspected
+**24** and **22** repos, with no repo created or deleted between them. A check
+whose output moves while the thing it measures holds still is not measuring it.
+If your audit reports a count, diff the count between runs — that is the cheapest
+non-determinism detector there is.
+
+**The fix is a third state.** Fetches now return `0 = fetched`, `2 = genuinely
+absent (404)`, `1 = could not look`, and every caller **withholds** its verdict
+on `1` instead of charging the repo. A 404 is an answer and is not retried; a
+403/5xx is retried with backoff and, if it persists, reported as unreadable.
+An exhausted rate limit is also not retried — it too is an answer, about the
+transport rather than the repo, and no backoff measured in seconds outlives a
+window measured in hours. The first post-fix sweep proved both halves at once:
+it hit the rate limit mid-run, withheld 29 verdicts honestly instead of
+inventing 29 findings, and spent 3× the calls rediscovering the same exhausted
+limit — hence the fail-fast.
+
+**Why it survived so long:** nothing could reach the failure path without a real
+outage. `gh_get` therefore lives in `verify-predicates.sh` with the rules, and
+`test-verify-predicates.sh` stubs `gh` to exercise all three states — including
+that a transient failure recovers on retry and that a 404 does *not* burn three
+calls. Proven by mutation: collapsing `return 1` back to `return 2` turns exactly
+two cases red.
+
+> Generalisation worth carrying: **`2>/dev/null` on a read you will draw a
+> conclusion from converts an outage into a lie.** Silence is not data. If a
+> tool cannot distinguish "absent" from "unreachable", every clean report it
+> produces is unfalsifiable.
 
 **Audit remotes, never local checkouts.** A first attempt at this swept working
 trees under `~/dev` and reported two violations that had already been fixed on
