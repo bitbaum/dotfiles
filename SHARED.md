@@ -25,9 +25,14 @@ the inventory underneath it is **generated**, and the number it produces is a
 | [`ai-forms`](https://github.com/maonakamoto/ai-forms) | `npm i github:maonakamoto/ai-forms#v0.1.0` | per-app "fill this form from prose" + conversational refinement. Headless — ships **no markup**, so each app keeps its own styling. |
 | [`ai-ration`](https://github.com/maonakamoto/ai-ration) | `npm i github:maonakamoto/ai-ration#v0.2.0` | LLM free-tier survival: multi-vendor fallback chain, the three kinds of 429, per-user fair-share rationing, `modelCost()` so a fallback can never silently bill. |
 | [`threadkit`](https://github.com/maonakamoto/threadkit) | `npm i threadkit` | multi-participant message threads where *permission is participation*, not a role or an ownership column. Headless pure functions, so "who may read this" is unit-testable instead of buried in a `WHERE` clause. AI participants obey the same visibility rules. **ESM-only.** |
+| [`limitkit`](https://github.com/maonakamoto/limitkit) | `npm i github:maonakamoto/limitkit#v0.1.0` | the fleet's **12 hand-rolled rate limiters** (this file's own "next extraction" row). Sliding/fixed windows over an injectable two-method `Store`; **bounded** memory default (the unbounded-Map leak is impossible by construction); standard `X-RateLimit-*` + `Retry-After` headers — what orangecat's ADR-0002 specified seven months before anything enforced it; `clientIp()`. Refusals count nothing, so a hammered key recovers. Ships no middleware and **no limit values** — how many attempts a route allows is app semantics, asserted locally. |
 
 **Adopted:** `ai-forms` — fleetcrown, evig, aoz-housing, surf-your-life.
 `ai-ration` — fleetcrown. `threadkit` — **nobody yet**.
+`limitkit` — fleetcrown (proving consumer; its old limiter had the unbounded
+Map). **Next adopter should be orangecat** — it closes ADR-0002 by making its
+Upstash client a 12-line `Store` adapter and deleting three of its four
+implementations.
 **Not yet:** orangecat and kivvi still carry their own form-assist; kivvi, evig,
 botsmann still carry their own provider layers.
 
@@ -80,7 +85,7 @@ Ranked by (copies × how identical the logic is). Counts from
 | Concern | Files | Why it is a good candidate |
 |---|---|---|
 | `auto-merge-sweep.sh` | ~~22~~ **6** | **EXTRACTED 2026-08-16/20.** Sixteen repos call the canonical as a reusable workflow, each verified to actually *run* it (a sweep that fails to start looks exactly like one with nothing to do). The six remaining are deliberate: dotfiles is the canonical home and runs it directly; ai-forms, datacat, petvity, solon had dirty working trees owned by other sessions when swept — convert when clear. The two repos that had ever *tested* their copies (evig, orangecat) had that coverage ported into the canonical suite **before** deletion: 17 cases, mutation-proven. |
-| rate limiting | **14** | A pure algorithm with zero app coupling. orangecat has 4, evig 3, botsmann 2 — *within one repo each*. **The next extraction.** |
+| rate limiting | **14 → adopting** | **Extracted 2026-08-20 as [`limitkit`](https://github.com/maonakamoto/limitkit)** (see registry above). fleetcrown converted as the proving consumer; 13 files remain across 8 repos, orangecat first in line (its ADR-0002 becomes a 12-line `Store` adapter + three deletions). The ratchet holds the count until each adoption lands. |
 | AI provider client | **16** | evig 7, orangecat 5. `ai-ration` already owns the hard part (chain, 429, budget); these are the callers. |
 | logger | **10** | sbb-lost-found alone has 4. |
 | health route | **8** | Identical shape in 8 repos; a 20-line contract. |
