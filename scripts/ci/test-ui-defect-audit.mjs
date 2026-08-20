@@ -95,6 +95,47 @@ const FIXTURES = {
     <div style="background:#fff;color:#111;font:16px sans-serif;padding:24px">
       <p style="text-align:center;max-width:420px;margin:0 auto">Every feature — health tracking, digital twin, vet network, marketplace, and adoption listings — is included free with no pet limits.</p>
     </div>`,
+
+  // A bare wrapper anchor around a styled button. The anchor's own ink is
+  // never painted — the button paints the label — so measuring the anchor read
+  // 1:1 on surf-your-life's "Konto erstellen". The button itself passes.
+  wrapperAnchor: `
+    <div style="background:#fff;font:16px sans-serif;padding:24px">
+      <a href="#go" style="color:#fff;text-decoration:none"><button style="background:#0f766e;color:#fff;border:0;padding:12px 24px;font-size:18px">Konto erstellen</button></a>
+    </div>`,
+
+  // A disabled control is dim BECAUSE it is disabled — WCAG exempts it. Its
+  // enabled twin with the same colors is a real finding.
+  disabledControl: `
+    <div style="background:#fff;font:14px sans-serif;padding:24px">
+      <button disabled style="background:#f4f4f4;color:#9a9a9a;border:0;padding:8px 16px">Send</button>
+      <button style="background:#f4f4f4;color:#9a9a9a;border:0;padding:8px 16px">Send twin</button>
+    </div>`,
+
+  // A row of padded buttons in a text column: the BUTTON BOX is flush with the
+  // column and only the labels sit padding deeper — aoz-wohnen's hero read as
+  // ragged for exactly this.
+  buttonRow: `
+    <div style="background:#fff;color:#111;font:16px sans-serif;padding:24px">
+      <div style="display:flex;flex-direction:column;gap:12px;width:600px">
+        <h1 style="margin:0;font-size:24px">Gemeinsam wohnen</h1>
+        <p style="margin:0">Die Wohnung, auf die ihr euch einigen könnt.</p>
+        <div style="display:flex;gap:12px"><a href="#d" style="background:#ba222e;color:#fff;padding:10px 16px;text-decoration:none">Ausprobieren</a><a href="#l" style="border:1px solid #ccc;color:#111;padding:10px 16px;text-decoration:none">Anmelden</a></div>
+        <p style="margin:0">Kein Konto nötig.</p>
+      </div>
+    </div>`,
+
+  // The same hero with the button row genuinely off the column: the BOX edge
+  // returns 16px out and back, and the box edge is what must be measured.
+  buttonRowRagged: `
+    <div style="background:#fff;color:#111;font:16px sans-serif;padding:24px">
+      <div style="display:flex;flex-direction:column;gap:12px;width:600px">
+        <h1 style="margin:0;font-size:24px">Gemeinsam wohnen</h1>
+        <p style="margin:0">Die Wohnung, auf die ihr euch einigen könnt.</p>
+        <div style="display:flex;gap:12px;margin-left:16px"><a href="#d" style="background:#ba222e;color:#fff;padding:10px 16px;text-decoration:none">Ausprobieren</a><a href="#l" style="border:1px solid #ccc;color:#111;padding:10px 16px;text-decoration:none">Anmelden</a></div>
+        <p style="margin:0">Kein Konto nötig.</p>
+      </div>
+    </div>`,
 };
 
 function assert(cond, msg) {
@@ -175,6 +216,30 @@ async function main() {
       r.ragged.length === 0,
       `an indented list between a description and a CTA is structure, got ${JSON.stringify(r.ragged)}`,
     );
+  });
+
+  await check("ignores a wrapper anchor whose label a nested button paints", async () => {
+    const r = await measure(FIXTURES.wrapperAnchor);
+    assert(!r.contrast.some((c) => c.tag === "a"), `the wrapper <a> must be skipped, got ${JSON.stringify(r.contrast)}`);
+    const btn = r.contrast.find((c) => c.tag === "button");
+    assert(btn && btn.value >= btn.floor, `the painted button passes on its own fill, got ${btn && btn.value}`);
+  });
+
+  await check("exempts a disabled control but reports its enabled twin", async () => {
+    const r = await measure(FIXTURES.disabledControl);
+    assert(!r.contrast.some((c) => c.text === "Send"), "the disabled button is exempt (WCAG inactive)");
+    const twin = r.contrast.find((c) => c.text === "Send twin");
+    assert(twin && twin.value < twin.floor, `the enabled twin is a real finding, got ${twin && twin.value}`);
+  });
+
+  await check("measures a padded button row by its box edge, not its label", async () => {
+    const r = await measure(FIXTURES.buttonRow);
+    assert(r.ragged.length === 0, `a flush button row is aligned, got ${JSON.stringify(r.ragged)}`);
+  });
+
+  await check("still catches a button row whose box is off the column", async () => {
+    const r = await measure(FIXTURES.buttonRowRagged);
+    assert(r.ragged.length >= 1, "a 16px box offset that returns must be reported");
   });
 
   await check("does NOT flag centered copy as a missing hanging indent", async () => {
