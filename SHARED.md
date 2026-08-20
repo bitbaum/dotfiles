@@ -79,12 +79,12 @@ Ranked by (copies × how identical the logic is). Counts from
 
 | Concern | Files | Why it is a good candidate |
 |---|---|---|
-| `auto-merge-sweep.sh` | **22** | 8 live versions of infrastructure that decides what ships. Highest count, worst drift. |
-| rate limiting | **14** | A pure algorithm with zero app coupling. orangecat has 4, evig 3, botsmann 2 — *within one repo each*. |
+| `auto-merge-sweep.sh` | ~~22~~ **6** | **EXTRACTED 2026-08-16/20.** Sixteen repos call the canonical as a reusable workflow, each verified to actually *run* it (a sweep that fails to start looks exactly like one with nothing to do). The six remaining are deliberate: dotfiles is the canonical home and runs it directly; ai-forms, datacat, petvity, solon had dirty working trees owned by other sessions when swept — convert when clear. The two repos that had ever *tested* their copies (evig, orangecat) had that coverage ported into the canonical suite **before** deletion: 17 cases, mutation-proven. |
+| rate limiting | **14** | A pure algorithm with zero app coupling. orangecat has 4, evig 3, botsmann 2 — *within one repo each*. **The next extraction.** |
 | AI provider client | **16** | evig 7, orangecat 5. `ai-ration` already owns the hard part (chain, 429, budget); these are the callers. |
 | logger | **10** | sbb-lost-found alone has 4. |
 | health route | **8** | Identical shape in 8 repos; a 20-line contract. |
-| `@ai-native-cms/core` | 2 | evig and revampit vendor it with **byte-identical trees** (`675b864b…`). Not yet diverged, so it is the cheapest extraction available — and a clock that is running. |
+| ~~`@ai-native-cms/core`~~ | — | **Withdrawn — measurement error.** `maonakamoto/revampit` *redirects* to `maonakamoto/evig` (renamed in the pivot); the "two repos" with byte-identical trees were two clones of ONE repo. Nothing to extract. Two directories are not two repos: check `git remote -v` before reporting cross-repo duplication. |
 
 ## What must NOT be centralized
 
