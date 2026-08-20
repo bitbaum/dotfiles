@@ -160,6 +160,15 @@ export const MEASURE = String.raw`(() => {
     var el = actions[i];
     var text = (el.innerText || "").trim();
     if (!text) continue;
+    // A wrapper whose visible label is painted by a nested action measures the
+    // wrapper's own never-painted ink: surf-your-life's bare <a> around a
+    // styled <button> read 1:1 against the button's fill. The nested control
+    // is in the scan in its own right, so the wrapper adds nothing but noise.
+    if (el.querySelector('a, button, [role="button"]')) continue;
+    // WCAG exempts inactive controls: a disabled Send button is dim BECAUSE it
+    // is disabled, and reporting it buries the real findings.
+    if (el.disabled || el.getAttribute("aria-disabled") === "true") continue;
+    if (el.closest("[disabled],[aria-disabled='true']")) continue;
     var r = el.getBoundingClientRect();
     if (r.width === 0 || r.height === 0) continue;
     var cs = getComputedStyle(el);
@@ -195,7 +204,7 @@ export const MEASURE = String.raw`(() => {
         var rg = document.createRange();
         rg.selectNodeContents(n);
         var rects = Array.prototype.slice.call(rg.getClientRects());
-        if (rects.length) return rects;
+        if (rects.length) { rects.host = el; return rects; }
       }
       if (n.nodeType === 1) {
         if (n.getAttribute && n.getAttribute("aria-hidden") === "true") continue;
@@ -236,16 +245,35 @@ export const MEASURE = String.raw`(() => {
       // spans side by side on ONE line, and that is a peer line, not a group.
       // Counting children alone exempted it and blinded the audit to the very
       // stack it was written for.
-      var innerTops = {};
-      var innerCount = 0;
+      // With TOLERANCE, not exact tops: two buttons on one row measure ~1px
+      // apart when only one of them has a border, and exact comparison read
+      // that row as a two-line group — exempting the very misalignment under
+      // test. Real stacked lines sit at least a line-height (>8px) apart.
+      var innerTops = [];
       for (var q = 0; q < kid.children.length; q++) {
         var kr = lineRects(kid.children[q]);
         if (!kr) continue;
-        var top = Math.round(kr[0].top);
-        if (!innerTops[top]) { innerTops[top] = 1; innerCount++; }
+        var top = kr[0].top;
+        var newTop = true;
+        for (var w = 0; w < innerTops.length; w++) {
+          if (Math.abs(innerTops[w] - top) < 8) { newTop = false; break; }
+        }
+        if (newTop) innerTops.push(top);
       }
-      if (innerCount >= 2) continue;
-      kids.push({ el: kid, left: Math.round(rects[0].left), text: (kid.innerText || "").trim().slice(0, 40) });
+      if (innerTops.length >= 2) continue;
+      // Where the row's PAINT starts. For plain text that is the first glyph;
+      // for a row led by an element that draws its own box — a button, a chip —
+      // it is that box's border edge, and the glyphs sit padding deeper by
+      // design. aoz's hero read as ragged because its CTA labels start 16px
+      // after the button edge that is actually flush with the column.
+      var edge = rects[0].left;
+      for (var h = rects.host; h && h !== box; h = h.parentElement) {
+        var hcs2 = getComputedStyle(h);
+        if (resolve(hcs2.backgroundColor)[3] > 0 || parseFloat(hcs2.borderLeftWidth) > 0) {
+          edge = h.getBoundingClientRect().left;
+        }
+      }
+      kids.push({ el: kid, left: Math.round(edge), text: (kid.innerText || "").trim().slice(0, 40) });
     }
     if (kids.length < 3) continue;
     seen++;
