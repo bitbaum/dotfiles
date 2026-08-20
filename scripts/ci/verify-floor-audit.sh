@@ -48,6 +48,33 @@ LIMIT="${GH_LIMIT:-100}"
 WARN_ONLY=0
 [ "${1:-}" = "--warn-only" ] && WARN_ONLY=1
 
+# --- Fetching is not knowing. -----------------------------------------------
+#
+# Every remote read here used to be `gh api ... 2>/dev/null`, and the empty
+# output that a failure produces was then read as a FACT — "no package.json",
+# "no workflows". A transient 403/5xx is not a fact. Measured 2026-08-16, one
+# sweep produced FOUR wrong verdicts from that conflation:
+#
+#   vitareba, aoz-housing  — live JS apps, reported as "not a JS repo" and
+#                            dropped from the floor entirely
+#   ai-forms, fleetcrown   — reported "CI never runs verify" while line 19 and
+#                            line 52 of their ci.yml do exactly that
+#
+# The tell was arithmetic: two runs an hour apart inspected 24 and 22 repos
+# with no repo created or deleted between them. A check whose output moves
+# while the thing it measures holds still is not measuring it.
+#
+# So the failure mode is now a THIRD state, never silence:
+#   0 = fetched   2 = genuinely absent (404)   1 = could not look
+#
+# This is the same discipline the OPAQUE column already applies to unreadable
+# verify scripts, applied to the transport instead of the content.
+#
+# `gh_get` itself lives in verify-predicates.sh so it can be tested against a
+# stubbed `gh` — the bug it fixes was invisible precisely because nothing could
+# exercise the failure path without a real outage.
+trap 'rm -f "$GH_ERR"' EXIT
+
 # Declared before any branch that could skip the assignment — under `set -u` a
 # later reference would otherwise kill the whole run instead of one repo.
 ok_list=""
@@ -59,6 +86,7 @@ discarded_list=""
 opaque_list=""
 forks_list=""
 uncalled_list=""
+decomposed_list=""
 softened_list=""
 total=0
 
@@ -141,11 +169,18 @@ while IFS=$'\t' read -r name branch is_fork; do
   # Resolve package.json ON THE REPO'S OWN DEFAULT BRANCH. Asking for ?ref=main
   # on a master repo 404s, which means "wrong ref", not "no package.json" —
   # that mistake previously produced a confidently wrong fleet survey.
-  pkg=$(gh api "repos/$OWNER/$name/contents/package.json?ref=$branch" \
-          --jq '.content' 2>/dev/null | tr -d '\n' | base64 -d 2>/dev/null)
+  pkg_raw=$(gh_get "repos/$OWNER/$name/contents/package.json?ref=$branch")
+  case $? in
+    0) pkg=$(printf '%s' "$pkg_raw" | jq -r '.content // ""' 2>/dev/null \
+               | tr -d '\n' | base64 -d 2>/dev/null) ;;
+    2) skipped_list="${skipped_list}  $name (no package.json on $branch)\n"
+       continue ;;
+    *) unreadable_list="${unreadable_list}  $name — could not read package.json on $branch after 3 tries (API error, NOT absence)\n"
+       continue ;;
+  esac
 
   if [ -z "$pkg" ]; then
-    skipped_list="${skipped_list}  $name (no package.json on $branch)\n"
+    unreadable_list="${unreadable_list}  $name — package.json on $branch fetched but decoded empty\n"
     continue
   fi
 
@@ -163,6 +198,8 @@ while IFS=$'\t' read -r name branch is_fork; do
   absent=""        # gates the repo has no script for at all
   opaque_gates=""  # gates we cannot see EITHER WAY, because verify delegates
                    # to a script file this audit does not execute or parse
+  sub_unreadable=""  # sub-manifests the API would not hand over — a transport
+                     # failure, which must not be read as "the gate isn't there"
 
   # Expand `npm run X` / `pnpm X` inside verify two levels deep, so a gate
   # counts whether it is reached via a named script or run directly. Matching
@@ -201,8 +238,16 @@ while IFS=$'\t' read -r name branch is_fork; do
     sub_dir=$(printf '%s' "$pair" | awk -F'|' '{print $2}')
     sub_script=$(printf '%s' "$pair" | awk -F'|' '{print $NF}')
     [ -n "$sub_dir" ] && [ -n "$sub_script" ] || continue
-    sub_pkg=$(gh api "repos/$OWNER/$name/contents/$sub_dir/package.json?ref=$branch" \
-                --jq '.content' 2>/dev/null | tr -d '\n' | base64 -d 2>/dev/null)
+    # A failed read here would make the sub-package's gate look ABSENT, i.e. a
+    # "needs real work" verdict earned by a network blip. Retry, then record
+    # that we could not look rather than letting silence mean absence.
+    sub_raw=$(gh_get "repos/$OWNER/$name/contents/$sub_dir/package.json?ref=$branch")
+    case $? in
+      0) sub_pkg=$(printf '%s' "$sub_raw" | jq -r '.content // ""' 2>/dev/null \
+                     | tr -d '\n' | base64 -d 2>/dev/null) ;;
+      2) continue ;;                                   # genuinely no sub-manifest
+      *) sub_unreadable="$sub_unreadable $sub_dir/package.json"; continue ;;
+    esac
     [ -n "$sub_pkg" ] || continue
     sub_scripts=$(printf '%s' "$sub_pkg" | jq -r '.scripts // {}' 2>/dev/null)
     [ -n "$sub_scripts" ] && [ "$sub_scripts" != null ] || continue
@@ -230,7 +275,9 @@ $(printf '%s' "$sub_scripts" | jq -r 'to_entries[] | "\(.key) \(.value)"')"
   # the confident-absence bug this script just stopped committing. A truncated
   # tree is reported as unknown rather than zero, for the same reason.
   test_files=unknown
-  tree=$(gh api "repos/$OWNER/$name/git/trees/$branch?recursive=1" 2>/dev/null)
+  # Already fails SAFE (unknown, never zero), but route it through the retrying
+  # fetch anyway — an unknown here silently disables the no-test-files rule.
+  tree=$(gh_get "repos/$OWNER/$name/git/trees/$branch?recursive=1") || tree=""
   if [ -n "$tree" ]; then
     if [ "$(printf '%s' "$tree" | jq -r '.truncated // false')" = true ]; then
       test_files=unknown          # too big to enumerate; do not guess
@@ -352,12 +399,29 @@ $(printf '%s' "$sub_scripts" | jq -r 'to_entries[] | "\(.key) \(.value)"')"
   # and not a per-push hook.
   ci_calls_verify=no
   ci_softened_in=""
+  all_wf=""
+  # Set the moment any workflow read fails. Every wiring verdict below is then
+  # withheld: an unread workflow is the one that might have contained the call
+  # we are about to report missing. This is what accused ai-forms of never
+  # running `verify` when its ci.yml line 19 is `npm run verify`.
+  wiring_unknown=""
 
-  for wf in $(gh api "repos/$OWNER/$name/contents/.github/workflows?ref=$branch" \
-                --jq '.[] | select(.name | test("\\.ya?ml$")) | .name' 2>/dev/null); do
-    wf_body=$(gh api "repos/$OWNER/$name/contents/.github/workflows/$wf?ref=$branch" \
-                --jq '.content' 2>/dev/null | tr -d '\n' | base64 -d 2>/dev/null)
-    [ -n "$wf_body" ] || continue
+  wf_index=$(gh_get "repos/$OWNER/$name/contents/.github/workflows?ref=$branch")
+  case $? in
+    0) wf_names=$(printf '%s' "$wf_index" \
+                    | jq -r '.[]? | select(.name | test("\\.ya?ml$")) | .name' 2>/dev/null) ;;
+    2) wf_names="" ;;   # genuinely no workflows directory
+    *) wf_names=""; wiring_unknown="could not list .github/workflows" ;;
+  esac
+
+  for wf in $wf_names; do
+    wf_raw=$(gh_get "repos/$OWNER/$name/contents/.github/workflows/$wf?ref=$branch")
+    case $? in
+      0) wf_body=$(printf '%s' "$wf_raw" | jq -r '.content // ""' 2>/dev/null \
+                     | tr -d '\n' | base64 -d 2>/dev/null) ;;
+      *) wiring_unknown="could not read $wf"; continue ;;
+    esac
+    [ -n "$wf_body" ] || { wiring_unknown="$wf decoded empty"; continue; }
     hits=$(printf '%s\n' "$wf_body" | scan_discarded_gates "$wf")
     while IFS= read -r hit; do
       [ -n "$hit" ] || continue
@@ -369,12 +433,31 @@ $(printf '%s' "$sub_scripts" | jq -r 'to_entries[] | "\(.key) \(.value)"')"
       ci_calls_verify=yes
       ci_verify_softened "$wf_body" && ci_softened_in="$wf"
     fi
+    all_wf="${all_wf}
+${wf_body}"
   done
 
   # Orthogonal to the content audit above: a repo can be AT FLOOR on what
   # `verify` contains and still have nothing on the branch that runs it.
+  #
+  # Calling `npm run verify` is the direct way to satisfy this. It is not the
+  # only way: a repo may run each constituent script by name, unsoftened, to
+  # fan the gates into parallel jobs. That satisfies the actual contract — every
+  # gate runs and every one can still fail — so it is reported separately rather
+  # than counted as a violation. Demanding the literal string was asking
+  # aoz-housing to serialize the slowest pipeline in the fleet to please a
+  # regex.
   if [ -n "$verify" ] && [ "$ci_calls_verify" = no ]; then
-    uncalled_list="${uncalled_list}  $name — CI never runs \`verify\`\n"
+    if [ -n "$wiring_unknown" ]; then
+      # Withheld, not decided. The unread file is exactly the one that could
+      # have contained the call, so "not found" here would be a claim about a
+      # place we never looked.
+      unreadable_list="${unreadable_list}  $name — wiring verdict withheld: $wiring_unknown\n"
+    elif ci_runs_verify_gates "$all_wf" "$verify"; then
+      decomposed_list="${decomposed_list}  $name — CI runs each gate by name instead of \`verify\`\n"
+    else
+      uncalled_list="${uncalled_list}  $name — CI never runs \`verify\`\n"
+    fi
   fi
   if [ -n "$ci_softened_in" ]; then
     softened_list="${softened_list}  $name — $ci_softened_in runs verify with --if-present\n"
@@ -383,7 +466,11 @@ $(printf '%s' "$sub_scripts" | jq -r 'to_entries[] | "\(.key) \(.value)"')"
     softened_list="${softened_list}  $name — \`verify\` softens itself: $verify\n"
   fi
 
-  if [ -z "$verify" ]; then
+  if [ -n "$sub_unreadable" ] && [ -n "$absent" ]; then
+    # The gate looks missing, but a sub-manifest that could have defined it is
+    # exactly what we failed to fetch. Withheld rather than charged.
+    opaque_list="${opaque_list}  $name — gate verdict withheld; could not read:$sub_unreadable\n"
+  elif [ -z "$verify" ]; then
     missing_list="${missing_list}  $name — no \`verify\` script at all\n"
   elif [ -n "$absent" ]; then
     # Not fixable by editing verify: the repo has no such script. Adding a
@@ -438,6 +525,16 @@ printf '  (AT FLOOR above judges what verify CONTAINS; this judges whether\n'
 printf '   anything on the branch actually runs it. A repo can pass one and\n'
 printf '   fail the other — botsmann did.)\n'
 printf '%b' "${uncalled_list:-  (none)\n}"
+
+echo
+printf '≡ DECOMPOSED — CI runs every gate by name, unsoftened, but never the\n'
+printf '  word `verify`. NOT a violation: the contract is that each gate runs\n'
+printf '  and can still fail, and it does. aoz-housing splits lint+typecheck,\n'
+printf '  unit tests and build into parallel jobs on purpose — collapsing that\n'
+printf '  into one verify step would serialize the fleet-slowest pipeline.\n'
+printf '  Residual risk, stated: a gate ADDED to verify later will not reach\n'
+printf '  CI by itself. That is exactly what this check keeps watching for.\n'
+printf '%b' "${decomposed_list:-  (none)\n}"
 
 echo
 printf '⊙ SOFTENED — verify is invoked, or written, so that it cannot fail\n'
