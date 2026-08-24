@@ -304,7 +304,7 @@ if [ -z "${ZELLIJ:-}" ] && [ -z "${BASH_EXECUTION_STRING:-}" ] && command -v zel
     if zellij list-sessions -ns 2>/dev/null | grep -q .; then
         zellij attach
     else
-        zellij -l projects
+        zellij
     fi
 fi
 
