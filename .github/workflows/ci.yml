@@ -82,6 +82,14 @@ jobs:
       - name: The duplication ratchet can still go red
         run: bash scripts/ci/test-shared-inventory.sh
 
+      # The stranded-work guard replaces a check that failed by being ignorable:
+      # git-health reported orangecat's 118 dirty files every day for ten days
+      # and changed nothing. This one keys on AGE and stays silent when healthy,
+      # so both failure modes are gates — it must go red on aged work, and it
+      # must stay quiet on a fresh tree, or it gets muted and is then absent.
+      - name: The stranded-work guard can go red, and stays quiet when it should
+        run: bash scripts/fleet/test-stranded-work.sh
+
       # The sweep decides what ships in every repo that calls it, so it is the
       # last script here that should be untested — and until now it was. These
       # run the REAL script against a fake `gh`, exercising shipped control flow
