@@ -292,6 +292,23 @@ git-health() {
 }
 
 # ═══════════════════════════════════════════════════
+# Stranded work — finished work that is going nowhere
+# ═══════════════════════════════════════════════════
+# git-health above answers "what is dirty", which is every repo someone is
+# working in. That number was 118 for orangecat every day for ten days and
+# changed nobody's behaviour, because a count that is equally true at minute
+# five and at day ten reads as noise.
+#
+# This one only speaks when work has AGED past a threshold, and says nothing
+# otherwise. It prints from cache so it never costs a prompt, and refreshes in
+# the background when that cache goes stale.
+fleet-stranded() { bash "$HOME/dev/dotfiles/scripts/fleet/stranded-work.sh" "${1:-}"; }
+
+if [ -z "${BASH_EXECUTION_STRING:-}" ] && [ -f "$HOME/dev/dotfiles/scripts/fleet/stranded-work.sh" ]; then
+    bash "$HOME/dev/dotfiles/scripts/fleet/stranded-work.sh" --shell 2>/dev/null
+fi
+
+# ═══════════════════════════════════════════════════
 # Zellij Auto-Attach
 # ═══════════════════════════════════════════════════
 # Only auto-attach for genuine human login terminals. Skip when:
@@ -304,7 +321,7 @@ if [ -z "${ZELLIJ:-}" ] && [ -z "${BASH_EXECUTION_STRING:-}" ] && command -v zel
     if zellij list-sessions -ns 2>/dev/null | grep -q .; then
         zellij attach
     else
-        zellij -l projects
+        zellij
     fi
 fi
 

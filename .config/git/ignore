@@ -1,2 +1,13 @@
+# Global ignores — for scratch that MY tooling creates in every repo I touch.
+#
+# The test for belonging here rather than in a project's .gitignore: would a
+# different contributor, on a machine without my setup, ever see this path? If
+# not, it is not the project's business. Putting it in 18 repos' .gitignore
+# instead means 18 diffs, 18 reviews, and a 19th repo that gets missed.
 **/.claude/settings.local.json
 .envrc
+
+# Playwright MCP writes here whenever an agent drives a browser. It appeared in
+# 9 repos this way and left 2 of them permanently dirty — and a permanently
+# dirty tree is what lets genuinely stranded work hide in the noise.
+.playwright-mcp/

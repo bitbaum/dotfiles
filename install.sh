@@ -45,7 +45,6 @@ link .bashrc
 link .config/kitty/kitty.conf
 link .config/starship.toml
 link .config/zellij/config.kdl
-link .config/zellij/layouts/projects.kdl
 
 # Project mapping
 link .config/claude-projects.conf
