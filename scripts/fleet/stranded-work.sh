@@ -57,7 +57,10 @@ now_epoch() { date +%s; }
 # ---------------------------------------------------------------------------
 scan_repo() {
   local dir="$1" name branch now
-  name="$(basename "$dir")"
+  # Optional $2 overrides the display name, so a worktree can report as
+  # "repo/branch-dir" instead of a bare directory name that says nothing about
+  # which repo it belongs to.
+  name="${2:-$(basename "$dir")}"
   now="$(now_epoch)"
 
   branch="$(git -C "$dir" rev-parse --abbrev-ref HEAD 2>/dev/null || echo '?')"
@@ -108,11 +111,35 @@ scan_repo() {
     "$name" "$dirty_count" "$dirty_age" "${unpushed_count:-0}" "$unpushed_age" "$branch"
 }
 
+# Worktrees hold real branches, and this guard could not see them.
+#
+# Measured 2026-08-25 in fleetcrown alone: 9 agent worktrees under
+# .claude/worktrees/ held 13 commits across 9 branches, NONE of them pushed,
+# the oldest 3 weeks old — while `fleet-stranded` reported the fleet clean.
+# The loop below only ever looked at $ROOT/*/, so every branch created by
+# `_claude_autoworktree_enter` was invisible to the one check built to find
+# exactly this. A guard with a blind spot shaped like the fleet's dominant
+# workflow is worse than none: it certifies the thing it cannot see.
+#
+# `git worktree list --porcelain` reports the main checkout first; skip it,
+# since the loop already scanned it.
+scan_worktrees() {
+  local repo="$1" repo_name="$2" first=1 wt
+  while IFS= read -r wt; do
+    if [ "$first" -eq 1 ]; then first=0; continue; fi   # main checkout
+    [ -e "$wt" ] || continue
+    scan_repo "$wt" "${repo_name}/$(basename "$wt")"
+  done < <(git -C "$repo" worktree list --porcelain 2>/dev/null | awk '/^worktree /{print $2}')
+}
+
 scan_all() {
-  local d
+  local d name
   for d in "$ROOT"/*/; do
     [ -d "$d/.git" ] || continue
-    scan_repo "${d%/}"
+    d="${d%/}"
+    name="$(basename "$d")"
+    scan_repo "$d" "$name"
+    scan_worktrees "$d" "$name"
   done
 }
 

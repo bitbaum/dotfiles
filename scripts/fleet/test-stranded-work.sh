@@ -87,6 +87,14 @@ out="$(printf '%s%s%s' "$(row a 0 -1 0 -1 main)"$'\n' "$(row b 7 9 0 -1 main)"$'
 echo
 echo "scanning half — real git repos with backdated files:"
 
+mkrepo_at() {
+  local d="$1/$2"; mkdir -p "$d"; git -C "$d" init -q
+  git -C "$d" config user.email t@t; git -C "$d" config user.name t
+  echo seed > "$d/seed.txt"; git -C "$d" add -A
+  git -C "$d" commit -qm seed --no-verify
+  printf '%s' "$d"
+}
+
 mkrepo() {
   local d="$TMP/$1"; mkdir -p "$d"; git -C "$d" init -q
   git -C "$d" config user.email t@t; git -C "$d" config user.name t
@@ -141,6 +149,43 @@ line="$(scan_repo "$d")"
 [ "$(printf '%s' "$line" | cut -f2)" = "0" ] \
   && ok "a repo with no remote scans without erroring" \
   || no "no-remote repo should scan cleanly, got '$line'"
+
+echo
+echo "worktrees — the blind spot that made this guard certify a lie:"
+
+# The fleet works almost entirely in `git worktree` checkouts created per agent
+# session. Scanning only $FLEET_ROOT/*/ therefore missed the majority of real
+# work: 26 unpushed commits across the fleet on 2026-08-25, oldest 25 days,
+# while the guard printed nothing. These pin the fix.
+wt_root="$TMP/wtfleet"; mkdir -p "$wt_root"
+d="$(mkrepo_at "$wt_root" withwt)"
+# A real remote, because "unpushed" is meaningless without one — scan_repo
+# measures against @{u} or origin/main and correctly reports nothing when
+# neither exists.
+git init -q --bare "$TMP/withwt.git"
+git -C "$d" remote add origin "$TMP/withwt.git"
+git -C "$d" branch -M main
+git -C "$d" push -q -u origin main 2>/dev/null
+git -C "$d" worktree add -q "$d/.claude/worktrees/feature" -b feat/x 2>/dev/null
+echo work > "$d/.claude/worktrees/feature/file.txt"
+git -C "$d/.claude/worktrees/feature" add -A
+GIT_COMMITTER_DATE="$(date -d '9 days ago' -Iseconds)" \
+  git -C "$d/.claude/worktrees/feature" -c user.email=t@t -c user.name=t \
+  commit -qm "stranded in a worktree" --no-verify --date="$(date -d '9 days ago' -Iseconds)"
+
+out="$(FLEET_ROOT="$wt_root" STRANDED_DAYS=3 bash "$SCRIPT" --check 2>&1)"; rc=$?
+[ $rc -ne 0 ] && [[ "$out" == *"withwt/feature"* ]] \
+  && ok "an aged commit inside a worktree is found, and named repo/worktree" \
+  || no "worktree work must be reported (rc=$rc, out='$out')"
+
+[[ "$out" == *"feat/x"* ]] \
+  && ok "...and reports the worktree's own branch, not the parent's" \
+  || no "expected the worktree branch feat/x (out='$out')"
+
+# The main checkout must not be double-counted as one of its own worktrees.
+[ "$(printf '%s\n' "$out" | grep -c 'withwt')" -eq 1 ] \
+  && ok "the main checkout is not re-scanned as its own worktree" \
+  || no "expected exactly one withwt line (out='$out')"
 
 echo
 echo "end to end:"
