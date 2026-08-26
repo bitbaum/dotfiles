@@ -53,21 +53,25 @@ jobs:
       - name: Self-test the detector
         run: node scripts/ci/test-model-pin-audit.mjs
 
-      # dotfiles has no package.json on purpose. Install ai-ration into a
-      # scratch dir and point the audit at it — the same shape ui-defects.yml
-      # uses for playwright. The vendor query lives in ai-ration precisely so
-      # this repo does not grow a second copy of it.
-      - name: Install ai-ration
+      # dotfiles has no package.json on purpose. Install ai-kit into a scratch
+      # dir and point the audit at it — the same shape ui-defects.yml uses for
+      # playwright. The vendor query lives in ai-kit precisely so this repo does
+      # not grow a second copy of it.
+      #
+      # Installed from GitHub rather than npm: ai-kit v0.3.0 is tagged and built
+      # but not on the registry, because the repo has no NPM_TOKEN. Switch this
+      # to `npm i ai-kit` once it does.
+      - name: Install ai-kit
         if: github.event_name != 'pull_request'
         run: |
           mkdir -p "$RUNNER_TEMP/air" && cd "$RUNNER_TEMP/air"
           npm init -y >/dev/null
-          npm i --no-audit --no-fund github:maonakamoto/ai-ration#v0.2.1 >/dev/null
+          npm i --no-audit --no-fund github:maonakamoto/ai-kit#v0.3.0 >/dev/null
 
       - name: Audit the fleet's pins
         if: github.event_name != 'pull_request'
         env:
-          AI_RATION_FROM: ${{ runner.temp }}/air
+          AI_KIT_FROM: ${{ runner.temp }}/air
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           # Absent keys are handled, not fatal: the vendor is reported UNCHECKED
           # rather than clean. "I could not look" is not "nothing is wrong".

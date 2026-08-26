@@ -27,8 +27,8 @@
  * runs in repos somebody still touches, and the repos that rot quietly are
  * precisely the ones nobody touches. This one needs no adoption at all.
  *
- * WHY IT REUSES ai-ration
- * -----------------------
+ * WHY IT REUSES ai-kit
+ * --------------------
  * `checkCatalog` already answers this, already distinguishes the three states
  * that matter, and already carries the scars — its own docstring records four
  * of nine default pins gone and a consumer silently failing for eight days.
@@ -46,7 +46,7 @@
  * ----------------------
  * That a listed model WORKS. Existence is cheap; capability is not. A model
  * can be listed and still refuse tool calls — of nine free models probed for
- * ai-ration's default chain, five answered only via a text protocol. If the
+ * ai-kit's default chain, five answered only via a text protocol. If the
  * surface is a tool loop, probe with a real tool call before pinning. This
  * audit catches the retirement, not the mismatch.
  *
@@ -61,7 +61,7 @@
  *
  * Env: GH_OWNER (default maonakamoto), GH_LIMIT (default 100),
  *      FLEET_ROOT (default ~/dev, --local only),
- *      AI_RATION_FROM (path to a repo that installs ai-ration),
+ *      AI_KIT_FROM (path to a repo that installs ai-kit),
  *      GROQ_API_KEY / OPENROUTER_API_KEY (to read the catalogues).
  */
 import { execFile } from "node:child_process";
@@ -410,17 +410,23 @@ function localFiles(repo) {
   }));
 }
 
-// ── The catalogue, via ai-ration ─────────────────────────────────────────────
+// ── The catalogue, via ai-kit ─────────────────────────────────────────────
 
-function loadAiRation() {
+function loadAiKit() {
   const candidates = [
+    process.env.AI_KIT_FROM,
+    // Renamed from ai-ration in v0.3.0. The old paths stay in the list so a
+    // checkout that has not been renamed still resolves — a rename should not
+    // turn a working audit into a silent exit 2.
     process.env.AI_RATION_FROM,
     join(homedir(), "dev", "fleetcrown"),
+    join(homedir(), "dev", "ai-kit"),
     join(homedir(), "dev", "ai-ration"),
   ].filter(Boolean);
 
   for (const root of candidates) {
     for (const entry of [
+      join(root, "node_modules", "ai-kit", "dist", "index.js"),
       join(root, "node_modules", "ai-ration", "dist", "index.js"),
       join(root, "dist", "index.js"),
     ]) {
@@ -428,8 +434,8 @@ function loadAiRation() {
     }
   }
   console.error(
-    "✗ ai-ration not found. Set AI_RATION_FROM=/path/to/a/repo that installs it,\n" +
-      "  or build it once: (cd ~/dev/ai-ration && npm i && npm run build)",
+    "\u2717 ai-kit not found. Set AI_KIT_FROM=/path/to/a/repo that installs it,\n" +
+      "  or build it once: (cd ~/dev/ai-kit && npm i && npm run build)",
   );
   process.exit(2);
 }
@@ -525,7 +531,7 @@ function report(judged) {
   if (gone.length) {
     lines.push("");
     lines.push("A pin is a scheduled outage. The durable fix is a chain across VENDORS —");
-    lines.push("see SHARED.md → ai-ration. Repinning buys time until the next retirement.");
+    lines.push("see SHARED.md → ai-kit. Repinning buys time until the next retirement.");
   }
 
   return lines.join("\n");
@@ -534,7 +540,7 @@ function report(judged) {
 // ── Main ─────────────────────────────────────────────────────────────────────
 
 export async function main() {
-  const { checkCatalog } = await loadAiRation();
+  const { checkCatalog } = await loadAiKit();
 
   const repos = LOCAL ? localRepos() : await remoteRepos();
   const findings = [];
