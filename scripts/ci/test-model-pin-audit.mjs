@@ -20,7 +20,19 @@
  *
  * Fixtures are inline strings — no network, no gh, no checkout, no key.
  */
-import { extractPins, attribute, collate, judge, looksLikeModelId, possibleAt } from "./model-pin-audit.mjs";
+import {
+  extractPins,
+  attribute,
+  collate,
+  judge,
+  looksLikeModelId,
+  possibleAt,
+  isLikelyPath,
+  isPossiblePath,
+  isCandidatePath,
+  segmentNamesAI,
+  modelListRegions,
+} from "./model-pin-audit.mjs";
 
 let failures = 0;
 function check(name, actual, expected) {
@@ -328,6 +340,148 @@ const model = 'openai/gpt-oss-20b:free'
     "the real pin in the same file is still judged against the catalogue",
     judged.find((j) => j.id === "openai/gpt-oss-20b:free")?.state,
     "ok",
+  );
+}
+
+// ── which files get opened ───────────────────────────────────────────
+//
+// Regression, and the expensive kind: a MISS, not a false alarm.
+//
+// The filter used to require the AI word in the FILENAME. Kivvi keeps its
+// provider clients side by side in packages/ai/src/providers/, and the audit
+// opened `anthropic.ts` while never opening `groq.ts` next to it — decided
+// entirely by which vendor names happened to be in a regex. Three retired ids
+// sat in the unopened files, so the report said Kivvi had 2 dead pins when it
+// had 6.
+//
+// Understating a repo is worse than skipping it. A skipped repo is absent; an
+// understated one prints a number that reads like an answer.
+
+console.log("\nwhich files get opened");
+
+{
+  // The four files from the miss, verbatim.
+  check("a vendor-named file under an ai/ directory is likely", isLikelyPath("packages/ai/src/providers/groq.ts"), true);
+  check("...and so is its openrouter sibling", isLikelyPath("packages/ai/src/providers/openrouter.ts"), true);
+  check("...and the index.ts beside them", isLikelyPath("packages/ai/src/providers/index.ts"), true);
+  check("...and the one that already worked still works", isLikelyPath("packages/ai/src/providers/anthropic.ts"), true);
+
+  check("the app-side caller stays likely", isLikelyPath("apps/web/lib/ai/call-provider.ts"), true);
+  check("env schemas are always opened", isLikelyPath("src/lib/env.ts"), true);
+  check("so are .env.example files", isLikelyPath(".env.example"), true);
+
+  // Botsmann's pin lived here, in a path naming no vendor and no AI concern.
+  check("a bare constants file is not likely", isLikelyPath("lib/constants.ts"), false);
+  check("...but is still a candidate, via the possible tier", isPossiblePath("lib/constants.ts"), true);
+  check("...so it does get opened", isCandidatePath("lib/constants.ts"), true);
+}
+
+// Matching is by token, never substring — this is the half that keeps the fix
+// from turning one blind spot into a flood. `ai` is a substring of all of these,
+// and the cap would then drop real candidates to make room for them.
+{
+  check("mail is not ai", segmentNamesAI("mail.ts"), false);
+  check("domain is not ai", segmentNamesAI("domain.ts"), false);
+  check("detail is not ai", segmentNamesAI("detail.ts"), false);
+  check("maintenance is not ai", segmentNamesAI("maintenance.ts"), false);
+  check("captain is not ai", segmentNamesAI("captain.ts"), false);
+
+  check("but ai is ai", segmentNamesAI("ai"), true);
+  check("and ai-guidance is ai", segmentNamesAI("ai-guidance.ts"), true);
+  check("and call-provider is a provider", segmentNamesAI("call-provider.ts"), true);
+  check("and llm-client is an llm", segmentNamesAI("llm-client.ts"), true);
+
+  check("an unrelated util is not opened", isCandidatePath("src/lib/format-date.ts"), false);
+  check("nor is a mailer", isCandidatePath("src/lib/mail.ts"), false);
+}
+
+// ── model arrays the old regex could not read ─────────────────────────────
+//
+// Second half of the Kivvi miss. Even once the file was being opened, nothing
+// came out of it: the extractor matched `models` followed directly by `[`, and
+// Kivvi writes a TypeScript type annotation in between.
+//
+//     models: AIModel[] = [
+//
+// The first `[` on that line belongs to `AIModel[]` and closes immediately, so
+// anchoring to it reads an empty array — a silent nothing, which is the worst
+// possible output for an audit. Two retired Groq ids sat inside.
+
+console.log("\nmodel arrays");
+
+const KIVVI_TYPED_ARRAY = `
+import type { AIModel } from "../types";
+
+/** Uses OpenAI-compatible API at https://api.groq.com/openai/v1. */
+export class GroqProvider extends OpenAICompatibleProvider {
+  id = "groq";
+  name = "Groq";
+
+  models: AIModel[] = [
+    {
+      id: "llama-3.3-70b-versatile",
+      name: "Llama 3.3 70B",
+      contextWindow: 128000,
+      supportsTools: true,
+      costPer1kInput: 0,
+    },
+    {
+      id: "llama-3.1-8b-instant",
+      name: "Llama 3.1 8B Instant",
+      contextWindow: 128000,
+      supportsTools: true,
+      costPer1kInput: 0,
+    },
+  ];
+
+  protected baseUrl = "https://api.groq.com/openai/v1";
+}
+`;
+
+{
+  const pins = extractPins(KIVVI_TYPED_ARRAY);
+  const ids = pins.map((p) => p.id).sort();
+  check(
+    "a type-annotated models array is read at all",
+    ids,
+    ["llama-3.1-8b-instant", "llama-3.3-70b-versatile"],
+  );
+
+  // The SECOND entry is the one a fixed-width window loses. The old pattern
+  // read at most 400 characters after `models`, and a richly described list
+  // runs past that long before it ends.
+  check("the second entry is not lost to a character budget", ids.length, 2);
+
+  // Human-readable names sit in the same objects and must not be mistaken for
+  // ids — they are filtered by shape, not by position.
+  check("display names in the same object are not pins", ids.includes("Llama 3.3 70B"), false);
+
+  // Each id reports its OWN line, not the line the array opened on. Vendor
+  // attribution is measured in lines from the pin, so a whole array collapsed
+  // onto one line would attribute every entry from the same neighbourhood.
+  const lines = pins.map((p) => p.line);
+  check("each id carries its own line number", new Set(lines).size, 2);
+
+  for (const pin of pins) {
+    check(`${pin.id} attributes to groq`, attribute(KIVVI_TYPED_ARRAY, pin.line), "groq");
+  }
+
+  const regions = modelListRegions(KIVVI_TYPED_ARRAY);
+  check("exactly one models array is found in the file", regions.length, 1);
+}
+
+{
+  // The plain shapes must keep working.
+  check("a one-line string form still reads", extractPins(`const model = 'openai/gpt-oss-120b'`).map((p) => p.id), ["openai/gpt-oss-120b"]);
+  check(
+    "a plain inline array still reads",
+    extractPins(`models: ['openai/gpt-oss-120b', 'openai/gpt-oss-20b']`).map((p) => p.id).sort(),
+    ["openai/gpt-oss-120b", "openai/gpt-oss-20b"],
+  );
+  check(
+    "an assignment without an annotation still reads",
+    extractPins(`const models = [\n  "openai/gpt-oss-120b",\n]`).map((p) => p.id),
+    ["openai/gpt-oss-120b"],
   );
 }
 

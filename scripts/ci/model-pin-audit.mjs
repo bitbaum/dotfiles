@@ -121,19 +121,103 @@ export const VENDORS = [
  * which mentions no vendor in its path and was invisible to the first version
  * of this filter. A pin does not have to live in a file called `provider.ts`.
  */
-const LIKELY_PATH =
-  /(^|\/)\.env\.example$|(^|\/)env\.(ts|js|mjs)$|(^|\/)(lib|src|app|apps|packages|config)\/.*(provider|model|llm|chat|ai|openai|anthropic)[^/]*\.(ts|js|mjs)$/i;
+/**
+ * Words that make a path segment worth opening — a DIRECTORY name as readily as
+ * a file name.
+ *
+ * The previous version of this filter required the word to appear in the
+ * FILENAME, and the cost of that was measured rather than imagined. Kivvi keeps
+ * its provider clients in `packages/ai/src/providers/`:
+ *
+ *   packages/ai/src/providers/anthropic.ts   ← scanned
+ *   packages/ai/src/providers/groq.ts        ← never opened
+ *   packages/ai/src/providers/openrouter.ts  ← never opened
+ *   packages/ai/src/providers/index.ts       ← never opened
+ *
+ * Two files in the same directory, one seen and one not, decided entirely by
+ * which vendor names someone had typed into a regex. Three retired ids lived in
+ * the unopened ones, so the audit reported Kivvi as having 2 dead pins when it
+ * had 6 — and understating a repo is worse than missing it outright, because
+ * the number looks like an answer.
+ *
+ * Matching is by TOKEN, never substring. `ai` as a substring appears in `mail`,
+ * `chain`, `domain`, `detail` and `maintenance`; as a token it appears in `ai`,
+ * `ai-guidance` and `open-ai`. Substring matching here would have quietly
+ * traded this blind spot for a flood of irrelevant files, and the cap would then
+ * have dropped real candidates to make room.
+ */
+const AI_TOKENS = new Set([
+  // the concern
+  "ai", "llm", "gpt", "model", "models", "provider", "providers", "chain",
+  "chat", "chats", "completion", "completions", "prompt", "prompts",
+  "agent", "agents", "embedding", "embeddings", "inference",
+  // the vendors — every one of these is a plausible file name, and the list
+  // being short is exactly what caused the miss above
+  "groq", "openrouter", "openai", "anthropic", "claude", "xai", "grok",
+  "gemini", "google", "ollama", "mistral", "together", "deepseek", "cohere",
+  "nvidia", "perplexity", "fireworks", "replicate",
+]);
 
-const POSSIBLE_PATH =
-  /(^|\/)(lib|src|app|apps|packages|config)\/.*(constants?|config|settings|defaults)[^/]*\.(ts|js|mjs)$/i;
+/** Directories that can contain application source. */
+const SOURCE_ROOT = /^(lib|src|app|apps|packages|config|server|services|api)$/i;
 
-const CANDIDATE_PATH = new RegExp(`(${LIKELY_PATH.source})|(${POSSIBLE_PATH.source})`, "i");
+/** Does this one path segment name an AI concern or a vendor? */
+export function segmentNamesAI(segment) {
+  const base = segment.replace(/\.(ts|js|mjs|tsx|jsx)$/i, "").toLowerCase();
+  return base.split(/[^a-z0-9]+/).some((token) => AI_TOKENS.has(token));
+}
+
+/**
+ * A file that almost certainly decides which model gets called.
+ *
+ * The AI word may sit anywhere below the source root — `ai/providers/groq.ts`
+ * qualifies on its directory alone, which is the whole point.
+ */
+export function isLikelyPath(path) {
+  if (/(^|\/)\.env\.example$/i.test(path)) return true;
+  if (/(^|\/)env\.(ts|js|mjs)$/i.test(path)) return true;
+  if (!/\.(ts|js|mjs)$/i.test(path)) return false;
+
+  const segments = path.split("/");
+  const rootAt = segments.findIndex((seg) => SOURCE_ROOT.test(seg));
+  if (rootAt < 0) return false;
+  return segments.slice(rootAt + 1).some(segmentNamesAI);
+}
+
+/**
+ * The long tail a name-based filter misses. Botsmann kept its model id in
+ * `lib/constants.ts`, which mentions no vendor and no AI concern anywhere in
+ * its path. A pin does not have to live in a file called `provider.ts`.
+ */
+export function isPossiblePath(path) {
+  return /(^|\/)(lib|src|app|apps|packages|config)\/.*(constants?|config|settings|defaults)[^/]*\.(ts|js|mjs)$/i.test(
+    path,
+  );
+}
+
+/** Worth opening at all. */
+export function isCandidatePath(path) {
+  return isLikelyPath(path) || isPossiblePath(path);
+}
 
 /** Never open these, whatever they are named. */
 const SKIP_PATH =
   /(^|\/)(node_modules|dist|build|\.next|coverage|__tests__|__fixtures__)\/|(^|\/)\.claude\/worktrees\//;
 
-const MAX_FILES_PER_REPO = 90;
+/**
+ * How many candidate files one repo may cost.
+ *
+ * Raised 90 -> 160 because the coverage ledger stopped being a caveat and
+ * became a finding: on 2026-08-27 it reported OrangeCat opening 90 of 133 with
+ * 4 likely-AI files dropped, and FleetCrown 90 of 109 with 15 dropped. Ranking
+ * puts likely files first, so shedding generic config is harmless — shedding
+ * fifteen files that name an AI concern is a blind spot, and in the two largest
+ * repos in the fleet.
+ *
+ * 160 clears both with headroom. The ledger stays, because the next repo to
+ * outgrow the cap should say so rather than quietly report a smaller number.
+ */
+const MAX_FILES_PER_REPO = 160;
 
 /** A vendor named 40+ lines from a pin is not describing that pin. */
 const MAX_ATTRIBUTION_DISTANCE = 40;
@@ -161,6 +245,54 @@ export function looksLikeModelId(s) {
 }
 
 /**
+ * The lines making up each `models = [ ... ]` array, with real line numbers.
+ *
+ * A tiny bracket walker rather than a regex, because the shapes in this fleet
+ * defeat any single pattern: `models: ['a']`, `models = [`, and Kivvi's
+ * `models: AIModel[] = [` all mean the same thing, and the last one hid two
+ * retired ids from the audit for as long as this was a regex.
+ *
+ * The opening bracket is the LAST one on the declaring line, which is what
+ * makes the annotated form work — in `models: AIModel[] = [`, the first `[`
+ * belongs to the type and closes immediately, so anchoring to it would read an
+ * empty array and report nothing. Exactly the silent miss this replaces.
+ */
+export function modelListRegions(text) {
+  const lines = text.split("\n");
+  const regions = [];
+
+  for (let i = 0; i < lines.length; i++) {
+    // Greedy on purpose: it backtracks to the LAST `[` within reach.
+    const opener = /\bmodels?\b[^\n]{0,80}\[/i.exec(lines[i]);
+    if (!opener) continue;
+
+    const region = [];
+    let depth = 0;
+    let opened = false;
+
+    // A models array running past 200 lines is not a models array.
+    for (let j = i; j < lines.length && j < i + 200; j++) {
+      const segment = j === i ? lines[j].slice(opener.index + opener[0].length - 1) : lines[j];
+      region.push({ line: j + 1, text: segment });
+
+      for (const ch of segment) {
+        if (ch === "[") {
+          depth++;
+          opened = true;
+        } else if (ch === "]") {
+          depth--;
+        }
+      }
+      if (opened && depth <= 0) break;
+    }
+
+    regions.push(region);
+  }
+
+  return regions;
+}
+
+/**
  * Pull candidate model ids out of one file's text, with the line each sits on.
  *
  * Three shapes cover how this fleet writes them:
@@ -177,9 +309,36 @@ export function extractPins(text) {
     if (!found.has(id)) found.set(id, lineOf(index));
   };
 
-  // 1. model: 'x'   |   models: ['a', 'b']
-  for (const m of text.matchAll(/\bmodels?\s*[:=]\s*(\[[\s\S]{0,400}?\]|['"`][^'"`\n]{0,120}['"`])/gi)) {
-    for (const q of m[1].matchAll(/['"`]([^'"`\n]+)['"`]/g)) remember(q[1], m.index);
+  const rememberAt = (id, line) => {
+    if (!looksLikeModelId(id)) return;
+    if (!found.has(id)) found.set(id, line);
+  };
+
+  // 1a. model: 'x'  — a single id on one line
+  for (const m of text.matchAll(/\bmodels?\s*[:=]\s*['"`]([^'"`\n]{0,120})['"`]/gi)) {
+    remember(m[1], m.index);
+  }
+
+  // 1b. a models ARRAY, walked by bracket depth rather than matched by regex.
+  //
+  // This used to be `models?\s*[:=]\s*\[[\s\S]{0,400}?\]`, and it missed a
+  // whole package. Kivvi declares its list as:
+  //
+  //     models: AIModel[] = [
+  //
+  // A TypeScript type annotation sits between the key and the array, so the
+  // pattern never fired, and two retired Groq ids inside were invisible. The
+  // 400-character window was the second half of the same problem: a list of
+  // richly described models runs well past it, so even a matching array was
+  // read only as far as its first two entries.
+  //
+  // Walking the brackets has neither limit. It also reports each id's OWN line
+  // instead of the line the array opened on, which matters because vendor
+  // attribution is measured in lines from the pin.
+  for (const region of modelListRegions(text)) {
+    for (const { line, text: lineText } of region) {
+      for (const q of lineText.matchAll(/['"`]([^'"`\n]+)['"`]/g)) rememberAt(q[1], line);
+    }
   }
 
   // 2. GROQ_MODEL: z.string().default('x')   |   const DEFAULT_MODEL = 'x'
@@ -338,8 +497,8 @@ let privateVisible = true;
 
 function rank(paths, repoName) {
   const sorted = [...paths].sort((a, b) => {
-    const ta = LIKELY_PATH.test(a) ? 0 : 1;
-    const tb = LIKELY_PATH.test(b) ? 0 : 1;
+    const ta = isLikelyPath(a) ? 0 : 1;
+    const tb = isLikelyPath(b) ? 0 : 1;
     return ta - tb || a.length - b.length;
   });
   if (sorted.length > MAX_FILES_PER_REPO) {
@@ -347,7 +506,7 @@ function rank(paths, repoName) {
     // tier is opened first, so a truncation that sheds only generic config
     // files has not touched the audit's real coverage — and saying which it was
     // is the difference between a caveat and an alarm.
-    const likelyDropped = sorted.slice(MAX_FILES_PER_REPO).filter((p) => LIKELY_PATH.test(p)).length;
+    const likelyDropped = sorted.slice(MAX_FILES_PER_REPO).filter((p) => isLikelyPath(p)).length;
     truncated.push({ repo: repoName, seen: sorted.length, opened: MAX_FILES_PER_REPO, likelyDropped });
   }
   return sorted.slice(0, MAX_FILES_PER_REPO);
@@ -388,7 +547,7 @@ async function remoteFiles(repo) {
     return []; // empty repo, or no access — not a finding
   }
   const all = (tree.tree ?? [])
-    .filter((n) => n.type === "blob" && !SKIP_PATH.test("/" + n.path) && CANDIDATE_PATH.test(n.path))
+    .filter((n) => n.type === "blob" && !SKIP_PATH.test("/" + n.path) && isCandidatePath(n.path))
     .map((n) => n.path);
   const paths = rank(all, repo.name);
 
@@ -426,7 +585,7 @@ function walk(dir, depth, acc) {
     if (e.isDirectory()) {
       if (/^(node_modules|dist|build|\.next|coverage|\.git|\.claude)$/.test(e.name)) continue;
       walk(full, depth - 1, acc);
-    } else if (CANDIDATE_PATH.test(full) && !SKIP_PATH.test(full)) {
+    } else if (isCandidatePath(full) && !SKIP_PATH.test(full)) {
       try {
         if (statSync(full).size < 400_000) acc.push(full);
       } catch { /* raced */ }
