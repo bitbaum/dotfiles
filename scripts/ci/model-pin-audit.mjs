@@ -278,9 +278,43 @@ export function collate(findings) {
  * look" as "nothing is there" reports every pin as retired and invents an
  * outage, which is worse than silence because someone acts on it.
  */
+/**
+ * Vendors whose entire published catalogue is lowercase.
+ *
+ * MEASURED, not assumed: on 2026-08-26 Groq listed 14 ids and OpenRouter 416,
+ * and not one of those 430 contained a capital letter. So an id carrying a
+ * capital cannot be a RETIRED id at these two — it was never one of their ids
+ * at all, and "retired" is the wrong diagnosis rather than merely the wrong
+ * target.
+ *
+ * This rule exists because the audit reported a retired pin in a repo that had
+ * nothing wrong. OrangeCat renders a pricing table:
+ *
+ *   models: ['Claude 3.5 Sonnet', 'GPT-4o', 'Gemini 2.0 Flash']
+ *
+ * — human-readable marketing copy that never reaches an API. `GPT-4o` was the
+ * only entry without a space, so it slipped the shape filter, landed nearest an
+ * OpenRouter marker, and was announced as a retired model pin. That is the
+ * failure mode a daily gate can least afford: cry wolf on a healthy repo and
+ * the reader learns to skim the report, taking the next real outage with it.
+ *
+ * Note where this lands such an id: `unattributed` — reported, not judged.
+ * Never dropped. For `GPT-4o` that bucket is also literally correct, since it
+ * IS an OpenAI product name and OpenAI is a vendor we do not query.
+ */
+const LOWERCASE_ONLY_VENDORS = new Set(["groq", "openrouter"]);
+
+/** Could this id ever have been served by this vendor? */
+export function possibleAt(vendorId, id) {
+  return !(LOWERCASE_ONLY_VENDORS.has(vendorId) && /[A-Z]/.test(id));
+}
+
 export function judge(findings, live) {
   return findings.map((f) => {
     if (!f.vendor) return { ...f, state: "unattributed" };
+    // Attribution put it here, but the vendor could never have served it, so
+    // the attribution is what is wrong. Report it; do not assert a retirement.
+    if (!possibleAt(f.vendor, f.id)) return { ...f, vendor: null, state: "unattributed" };
     const set = live.get(f.vendor);
     if (!set) return { ...f, state: "unchecked" };
     return { ...f, state: set.has(f.id) ? "ok" : "gone" };

@@ -20,7 +20,7 @@
  *
  * Fixtures are inline strings — no network, no gh, no checkout, no key.
  */
-import { extractPins, attribute, collate, judge, looksLikeModelId } from "./model-pin-audit.mjs";
+import { extractPins, attribute, collate, judge, looksLikeModelId, possibleAt } from "./model-pin-audit.mjs";
 
 let failures = 0;
 function check(name, actual, expected) {
@@ -266,6 +266,69 @@ console.log("\nvendor confusion (regression)");
   const judged = judge(findings, new Map([["groq", GROQ_LIVE]]));
   check("the real groq pin is still caught as retired", judged.filter((j) => j.state === "gone").map((j) => j.id), ["llama-3.1-8b-instant"]);
   check("the xAI pin is unchecked, not retired", judged.filter((j) => j.state === "unchecked").map((j) => j.id), ["grok-3-mini"]);
+}
+
+// ── a display label is not a pin ────────────────────────────────────
+//
+// Regression: the audit announced a RETIRED model in OrangeCat, a repo with
+// nothing wrong. The string was marketing copy in a pricing table — every other
+// entry contained a space and was filtered out, `GPT-4o` did not. Reporting a
+// healthy repo as broken is how a daily gate loses its reader.
+//
+// Both halves are asserted. Suppressing the false one is only worth doing if
+// the real retired pin in the very same file is still caught.
+
+console.log("\ndisplay labels vs real pins");
+
+const ORANGECAT_UI = `
+import { OPENROUTER_API_URL } from './constants'
+
+export const TIERS = {
+  standard: {
+    title: 'Standard Tier',
+    models: ['Claude 3.5 Sonnet', 'GPT-4o', 'Gemini 2.0 Flash'],
+  },
+}
+
+// the actual call, further down the same file
+const model = 'openai/gpt-oss-20b:free'
+`;
+
+{
+  check("an uppercase id is impossible at openrouter", possibleAt("openrouter", "GPT-4o"), false);
+  check("and impossible at groq", possibleAt("groq", "Llama-3.3-70B"), false);
+  check("but lowercase ids stay possible", possibleAt("openrouter", "openai/gpt-oss-20b:free"), true);
+  // Uppercase is only impossible where the catalogue was measured. Together's
+  // real ids DO carry capitals, so the rule must not spread to every vendor.
+  check("uppercase is not ruled out at vendors we did not measure", possibleAt("together", "meta-llama/Llama-3.3-70B-Instruct-Turbo-Free"), true);
+
+  const pins = extractPins(ORANGECAT_UI);
+  const findings = pins.map((p) => ({
+    repo: "orangecat",
+    path: "src/lib/ai-guidance.ts",
+    line: p.line,
+    id: p.id,
+    vendor: attribute(ORANGECAT_UI, p.line),
+  }));
+  const judged = judge(findings, new Map([["openrouter", OR_LIVE]]));
+
+  check(
+    "the display label is not reported as retired",
+    judged.filter((j) => j.state === "gone").map((j) => j.id).includes("GPT-4o"),
+    false,
+  );
+  check(
+    "it is listed as unjudged rather than dropped",
+    judged.filter((j) => j.state === "unattributed").map((j) => j.id).includes("GPT-4o"),
+    true,
+  );
+  // OR_LIVE contains openai/gpt-oss-20b:free, so the real pin here is live —
+  // what matters is that it was judged at all, not silenced alongside the label.
+  check(
+    "the real pin in the same file is still judged against the catalogue",
+    judged.find((j) => j.id === "openai/gpt-oss-20b:free")?.state,
+    "ok",
+  );
 }
 
 console.log(failures ? `\n✗ ${failures} failure(s)` : "\n✓ all checks pass");
