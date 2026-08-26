@@ -11,3 +11,13 @@
 # 9 repos this way and left 2 of them permanently dirty — and a permanently
 # dirty tree is what lets genuinely stranded work hide in the noise.
 .playwright-mcp/
+
+# Per-session agent worktrees. `_claude_autoworktree_enter` creates these in
+# whatever repo a session opens in, so the set of affected repos is "all of
+# them, eventually" — which is the test at the top of this file.
+#
+# It was done the other way first: 21 repos got a .gitignore line, 2 got a
+# .git/info/exclude (machine-local, so invisible to review and to every other
+# checkout), and 2 were missed — leaving solon reported as stranded work for
+# five days over an empty directory. That is the 19th-repo problem, measured.
+**/.claude/worktrees/
