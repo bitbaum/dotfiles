@@ -90,6 +90,14 @@ jobs:
       - name: The stranded-work guard can go red, and stays quiet when it should
         run: bash scripts/fleet/test-stranded-work.sh
 
+      # This one DELETES CHECKOUTS, so its only interesting failure is a false
+      # positive. Every refusal in the predicate is a case that would otherwise
+      # have destroyed the single existing copy of some work, and each is pinned
+      # separately — a combined "unsafe" fixture is exactly what hides one guard
+      # silently inverting.
+      - name: The worktree GC refuses everything it should
+        run: bash scripts/fleet/test-gc-merged-worktrees.sh
+
       # The sweep decides what ships in every repo that calls it, so it is the
       # last script here that should be untested — and until now it was. These
       # run the REAL script against a fake `gh`, exercising shipped control flow

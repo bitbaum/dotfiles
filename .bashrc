@@ -303,6 +303,10 @@ git-health() {
 # otherwise. It prints from cache so it never costs a prompt, and refreshes in
 # the background when that cache goes stale.
 fleet-stranded() { bash "$HOME/dev/dotfiles/scripts/fleet/stranded-work.sh" "${1:-}"; }
+# Companion to the above: stranded-work asks "is any work trapped here?",
+# fleet-gc asks "is any checkout still here after its work shipped?". Dry-run
+# unless given --go; it deletes checkouts, so that default is deliberate.
+fleet-gc() { bash "$HOME/dev/dotfiles/scripts/fleet/gc-merged-worktrees.sh" "${1:-}"; }
 
 if [ -z "${BASH_EXECUTION_STRING:-}" ] && [ -f "$HOME/dev/dotfiles/scripts/fleet/stranded-work.sh" ]; then
     bash "$HOME/dev/dotfiles/scripts/fleet/stranded-work.sh" --shell 2>/dev/null
