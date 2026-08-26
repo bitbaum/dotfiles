@@ -23,14 +23,22 @@ the inventory underneath it is **generated**, and the number it produces is a
 | Package | Install | Replaces |
 |---|---|---|
 | [`ai-forms`](https://github.com/maonakamoto/ai-forms) | `npm i github:maonakamoto/ai-forms#v0.1.0` | per-app "fill this form from prose" + conversational refinement. Headless — ships **no markup**, so each app keeps its own styling. |
-| [`ai-ration`](https://github.com/maonakamoto/ai-ration) | `npm i github:maonakamoto/ai-ration#v0.2.0` | LLM free-tier survival: multi-vendor fallback chain, the three kinds of 429, per-user fair-share rationing, `modelCost()` so a fallback can never silently bill. |
+| [`ai-kit`](https://github.com/maonakamoto/ai-kit) | `npm i github:maonakamoto/ai-kit#v0.3.0` | **the AI layer, in one install** — which model to call, whether the vendor still lists it, the three kinds of 429, fair-share of a free tier, and (re-exported) `ai-forms`. Renamed from `ai-ration` 2026-08-26: the name described one of five modules, and the package had one adopter while five repos that skipped it went down together to a retired model id. |
 | [`threadkit`](https://github.com/maonakamoto/threadkit) | `npm i threadkit` | multi-participant message threads where *permission is participation*, not a role or an ownership column. Headless pure functions, so "who may read this" is unit-testable instead of buried in a `WHERE` clause. AI participants obey the same visibility rules. **ESM-only.** |
 | [`limitkit`](https://github.com/maonakamoto/limitkit) | `npm i github:maonakamoto/limitkit#v0.1.0` | the fleet's **12 hand-rolled rate limiters** (this file's own "next extraction" row). Sliding/fixed windows over an injectable two-method `Store`; **bounded** memory default (the unbounded-Map leak is impossible by construction); standard `X-RateLimit-*` + `Retry-After` headers — what orangecat's ADR-0002 specified seven months before anything enforced it; `clientIp()`. Refusals count nothing, so a hammered key recovers. Ships no middleware and **no limit values** — how many attempts a route allows is app semantics, asserted locally. |
 
 **Adopted:** `ai-forms` — fleetcrown, evig, aoz-housing, surf-your-life.
-`ai-ration` — fleetcrown, **and this repo** (`model-pin-audit.mjs` calls
+`ai-kit` — fleetcrown, **and this repo** (`model-pin-audit.mjs` calls
 `checkCatalog`; the audit needed exactly the vendor query the package owns, so
-writing a second one here would have been this file's own sin). `threadkit` — **nobody yet**.
+writing a second one here would have been this file's own sin).
+
+**On merging packages.** `ai-kit` absorbed `ai-ration` and re-exports
+`ai-forms`, because to an app "which model do we call", "AI chat" and "AI form
+fill" are ONE feature — AOZ adopted the form half, hand-rolled the rest, and was
+taken down by the half it skipped. `threadkit` and `limitkit` are deliberately
+NOT merged in: neither is about AI, and an app throttling its login form should
+not install a model catalogue to do it. Merge by what a consumer needs together,
+never by "these are all shared utilities". `threadkit` — **nobody yet**.
 `limitkit` — fleetcrown (proving consumer; its old limiter had the unbounded
 Map). **Next adopter should be orangecat** — it closes ADR-0002 by making its
 Upstash client a 12-line `Store` adapter and deleting three of its four
