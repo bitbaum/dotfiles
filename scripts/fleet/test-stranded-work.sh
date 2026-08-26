@@ -188,6 +188,70 @@ out="$(FLEET_ROOT="$wt_root" STRANDED_DAYS=3 bash "$SCRIPT" --check 2>&1)"; rc=$
   || no "expected exactly one withwt line (out='$out')"
 
 echo
+echo "merged branches — the false positive that made the whole report noise:"
+
+# On 2026-08-26 this guard named 25 stranded locations. Twenty-four of them were
+# MERGED PRs (`gh pr list --state all`, all 24, oldest 25 days). The mechanism:
+# the fleet squash-merges, GitHub deletes the remote branch, `fetch --prune`
+# drops the tracking ref, and the local branch keeps a `branch.*.merge` config
+# pointing at a ref that no longer resolves. The old code read that as "no
+# upstream" and fell through to origin/main, where the pre-squash commit is
+# unreachable by construction — so it counted as unpushed permanently.
+#
+# These three pin the distinction the fix turns on: upstream GONE is not
+# upstream ABSENT.
+mrepo="$TMP/merged"; mkdir -p "$mrepo"
+git init -q --bare "$TMP/merged.git"
+d="$(mkrepo_at "$TMP" merged)"
+git -C "$d" remote add origin "$TMP/merged.git"
+git -C "$d" branch -M main
+git -C "$d" push -q -u origin main
+
+git -C "$d" checkout -q -b feat/squashed
+echo work > "$d/f.txt"; git -C "$d" add -A
+GIT_COMMITTER_DATE="$(date -d '20 days ago' -Iseconds)" \
+  git -C "$d" -c user.email=t@t -c user.name=t commit -qm "merged work" \
+  --no-verify --date="$(date -d '20 days ago' -Iseconds)"
+git -C "$d" push -q -u origin feat/squashed
+# main gets the CONTENT under a different sha, exactly as a squash-merge does
+git -C "$d" push -q origin --delete feat/squashed
+git -C "$d" fetch -q --prune origin
+
+git -C "$d" config --get branch.feat/squashed.merge >/dev/null \
+  && ok "the fixture reproduces it: upstream still configured after the prune" \
+  || no "fixture is wrong — upstream config should survive a prune"
+
+line="$(scan_repo "$d")"
+u="$(printf '%s' "$line" | cut -f4)"
+[ "$u" = "0" ] \
+  && ok "a pushed-then-deleted branch is not stranded — it already left the machine" \
+  || no "merged branch must scan as 0 unpushed, got $u ('$line')"
+
+# The other half: never pushed at all is still the worst case and must fire.
+git -C "$d" checkout -q -b feat/never-pushed main
+echo other > "$d/g.txt"; git -C "$d" add -A
+GIT_COMMITTER_DATE="$(date -d '20 days ago' -Iseconds)" \
+  git -C "$d" -c user.email=t@t -c user.name=t commit -qm "real stranded work" \
+  --no-verify --date="$(date -d '20 days ago' -Iseconds)"
+line="$(scan_repo "$d")"
+u="$(printf '%s' "$line" | cut -f4)"; uage="$(printf '%s' "$line" | cut -f5)"
+[ "$u" = "1" ] && [ "$uage" -ge 19 ] \
+  && ok "a branch that never had an upstream still counts (${uage}d)" \
+  || no "never-pushed work must still be found, got u=$u age=$uage"
+
+# And a live upstream still measures against itself, not the default branch.
+git -C "$d" push -q -u origin feat/never-pushed
+echo more >> "$d/g.txt"; git -C "$d" add -A
+GIT_COMMITTER_DATE="$(date -d '20 days ago' -Iseconds)" \
+  git -C "$d" -c user.email=t@t -c user.name=t commit -qm "ahead of upstream" \
+  --no-verify --date="$(date -d '20 days ago' -Iseconds)"
+line="$(scan_repo "$d")"
+u="$(printf '%s' "$line" | cut -f4)"
+[ "$u" = "1" ] \
+  && ok "a resolvable upstream is measured against, not origin/main" \
+  || no "expected 1 commit ahead of upstream, got $u ('$line')"
+
+echo
 echo "end to end:"
 
 out="$(FLEET_ROOT="$TMP" STRANDED_DAYS=3 bash "$SCRIPT" --check 2>&1)"; rc=$?

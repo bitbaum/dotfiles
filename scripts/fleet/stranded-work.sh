@@ -88,9 +88,34 @@ scan_repo() {
   # Unpushed: measured against the upstream when there is one, else against the
   # remote default branch. A branch that was never pushed is the worse case, not
   # an exempt one — that is where four of fleetcrown's commits were hiding.
-  local base unpushed_count=0 unpushed_age=-1 oldest_commit
-  if git -C "$dir" rev-parse --verify -q '@{u}' >/dev/null 2>&1; then
-    base='@{u}'
+  #
+  # But "no upstream" and "upstream gone" are opposite facts, and conflating
+  # them made this guard report the whole fleet as stranded. The fleet's normal
+  # end of life for a branch is: push, PR, squash-merge, GitHub deletes the
+  # remote branch, a later `fetch --prune` drops the tracking ref. The local
+  # branch is left with `branch.<n>.merge` still configured and nothing to
+  # resolve it to. Falling through to origin/main then counts the pre-squash
+  # commit as unpushed FOREVER — it is not reachable from main and never will
+  # be, because main got a different commit with the same content.
+  #
+  # Measured 2026-08-26: 24 of the 25 locations this reported as stranded were
+  # merged PRs. Every one. `gh pr list --state all` said MERGED for all 24, the
+  # oldest 25 days — i.e. the guard's loudest number was entirely false, and it
+  # would have stayed false for as long as those worktrees existed.
+  #
+  # A configured-but-unresolvable upstream is therefore proof the branch DID
+  # leave the machine, which is exactly what puts it out of scope: this guard
+  # looks for work GitHub cannot see. Whether that pushed branch was merged or
+  # abandoned is a question for `gh`, not for a filesystem scan.
+  local base unpushed_count=0 unpushed_age=-1 oldest_commit upstream
+  upstream="$(git -C "$dir" for-each-ref --format='%(upstream:short)' \
+    "refs/heads/$branch" 2>/dev/null)"
+  if [ -n "$upstream" ]; then
+    if git -C "$dir" rev-parse --verify -q "refs/remotes/$upstream" >/dev/null 2>&1; then
+      base="$upstream"
+    else
+      base=''          # pushed, then the remote branch was deleted — not stranded
+    fi
   elif git -C "$dir" rev-parse --verify -q origin/main >/dev/null 2>&1; then
     base='origin/main'
   elif git -C "$dir" rev-parse --verify -q origin/master >/dev/null 2>&1; then
