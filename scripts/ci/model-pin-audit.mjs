@@ -299,6 +299,9 @@ export function judge(findings, live) {
  */
 const truncated = [];
 
+/** Did the token that listed the fleet see any private repo? See remoteRepos. */
+let privateVisible = true;
+
 function rank(paths, repoName) {
   const sorted = [...paths].sort((a, b) => {
     const ta = LIKELY_PATH.test(a) ? 0 : 1;
@@ -327,11 +330,18 @@ async function remoteRepos() {
     "repo", "list", OWNER,
     "--limit", String(GH_LIMIT),
     "--no-archived",
-    "--json", "name,defaultBranchRef,isFork",
+    "--json", "name,defaultBranchRef,isFork,visibility",
   ]);
-  return JSON.parse(raw)
-    .filter((r) => !r.isFork && r.defaultBranchRef?.name)
-    .map((r) => ({ name: r.name, branch: r.defaultBranchRef.name }));
+  const all = JSON.parse(raw).filter((r) => !r.isFork && r.defaultBranchRef?.name);
+
+  // A workflow's default GITHUB_TOKEN is scoped to its own repo, so `repo list`
+  // returns only PUBLIC ones — and a sweep that silently sees fewer repos than
+  // it did yesterday reports a cleaner fleet, not a smaller one. Detectable
+  // without knowing the true count: zero private repos in the answer means
+  // either there are none, or this token cannot see them.
+  privateVisible = all.some((r) => r.visibility && r.visibility !== "PUBLIC");
+
+  return all.map((r) => ({ name: r.name, branch: r.defaultBranchRef.name }));
 }
 
 async function remoteFiles(repo) {
@@ -550,6 +560,13 @@ export async function main() {
 
   console.log(report(judged));
   console.log(`\ninspected ${repos.length} repo(s)${LOCAL ? " (local checkouts)" : " on their default branches"}`);
+  if (!LOCAL && !privateVisible) {
+    console.log(
+      "NOTE — no private repo was listed. Either there are none, or this token\n" +
+        "       cannot see them; a repo-scoped GITHUB_TOKEN cannot. Set GH_TOKEN to a\n" +
+        "       PAT with repo scope to audit private repos too.",
+    );
+  }
 
   const dead = judged.some((j) => j.state === "gone");
   process.exit(dead && !WARN_ONLY ? 1 : 0);
