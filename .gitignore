@@ -3,7 +3,13 @@
 __pycache__/
 *.pyc
 .claude/hooks/dangerous-commands.log
-.claude/hooks/fleetcrown-capture.sh
+
+# FleetCrown rewrites its own hooks here on every startup ("Do not edit; Fleet
+# Runner rewrites this file", says the file). Only fleetcrown-capture.sh was
+# listed, so when a second generated hook appeared this tree went permanently
+# dirty — and a permanently dirty tree is where genuinely stranded work hides.
+# Match the family, not the member.
+.claude/hooks/fleetcrown-*.sh
 
 # Per-session agent worktrees — scratch, never part of the repo.
 .claude/worktrees/
