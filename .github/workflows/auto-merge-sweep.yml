@@ -51,7 +51,7 @@ on:
         type: string
         default: '3'
       ref:
-        description: 'Pin the sweep version (tag/sha of maonakamoto/dotfiles).'
+        description: 'Pin the sweep version (tag/sha of catomean/dotfiles).'
         type: string
         default: master
     secrets:
@@ -86,7 +86,7 @@ jobs:
       # PRs get merged.
       - uses: actions/checkout@v7
         with:
-          repository: maonakamoto/dotfiles
+          repository: catomean/dotfiles
           ref: ${{ inputs.ref }}
 
       - name: Sweep
