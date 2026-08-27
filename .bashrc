@@ -330,120 +330,24 @@ if [ -z "${ZELLIJ:-}" ] && [ -z "${BASH_EXECUTION_STRING:-}" ] && command -v zel
 fi
 
 # ═══════════════════════════════════════════════════
-# Agent + Cockpit helpers with Zellij Tab Awareness
+# Agent helpers
 # ═══════════════════════════════════════════════════
-_agent_resolve_project_dir() {
-    local CONFIG="$HOME/.config/claude-projects.conf"
-    [ -f "$CONFIG" ] || return 1
+# The zellij-tab -> project mapping that used to live here was removed on
+# 2026-08-27. It resolved the focused tab name against ~/.config/
+# claude-projects.conf and silently cd'd there. Tabs have not been renamed per
+# project for months (they read "Tab #9"), so it matched nothing — and when it
+# did match it could move you into the wrong project. cwd is the project.
 
-    local TAB_NAME TMP="/tmp/_claude_zt_$$.txt"
-    zellij action dump-layout > "$TMP" 2>/dev/null
-    TAB_NAME=$(grep 'focus=true' "$TMP" | grep 'tab name=' | sed 's/.*tab name="\([^"]*\)".*/\1/')
-    rm -f "$TMP"
-    [ -z "$TAB_NAME" ] && return 1
-
-    local DIR
-    DIR=$(while IFS='|' read -r name dir; do
-        [[ "$name" =~ ^#.*$ ]] && continue
-        [ -z "$name" ] && continue
-        local clean_tab=$(echo "$TAB_NAME" | sed 's/[$[:space:]]*$//')
-        local clean_name=$(echo "$name" | sed 's/[$[:space:]]*$//')
-        if [ "${clean_tab,,}" = "${clean_name,,}" ]; then
-            echo "$dir"
-            break
-        fi
-    done < "$CONFIG")
-
-    [ -z "$DIR" ] && return 1
-    [ -d "$DIR" ] || return 1
-    echo "$DIR"
-}
-
-_agent_cd_from_tab_if_home() {
-    [ "$PWD" = "$HOME" ] || return 0
-    [ -n "${ZELLIJ:-}" ] || return 0
-
-    local PROJECT_DIR
-    PROJECT_DIR=$(_agent_resolve_project_dir)
-    if [ -n "$PROJECT_DIR" ]; then
-        echo "  -> Tab -> $PROJECT_DIR"
-        cd "$PROJECT_DIR" || return 1
-    fi
-}
-
-claude() {
-    _agent_cd_from_tab_if_home || true
-
-    local SESSION_DIR="$HOME/.claude/sessions"
-    mkdir -p "$SESSION_DIR"
-
-    local DIR_HASH=$(echo "$(pwd)" | md5sum | cut -d' ' -f1)
-    local SESSION_FILE="$SESSION_DIR/$DIR_HASH.txt"
-    local PROJECT=$(basename "$(pwd)")
-
-    if [ -f "$SESSION_FILE" ]; then
-        local SAVED_TIME=$(cut -d'|' -f2 "$SESSION_FILE" 2>/dev/null || echo "0")
-        local NOW=$(date +%s)
-        local DIFF=$((NOW - SAVED_TIME))
-
-        if [ $DIFF -gt 120 ] && [ $DIFF -lt 172800 ]; then
-            local SAVED_PROJECT=$(cut -d'|' -f1 "$SESSION_FILE")
-            local HOURS=$((DIFF / 3600))
-            local MINS=$(((DIFF % 3600) / 60))
-
-            local TIME_AGO=""
-            if [ $HOURS -gt 0 ]; then
-                TIME_AGO="${HOURS}h ${MINS}m ago"
-            else
-                TIME_AGO="${MINS}m ago"
-            fi
-
-            echo ""
-            echo "  Previous session: $SAVED_PROJECT ($TIME_AGO)"
-            echo "  Tell Claude: \"continue\""
-            echo ""
-        fi
-    fi
-
-    echo "$PROJECT|$(date +%s)|$(pwd)" > "$SESSION_FILE"
-
-    # Write tab identity keyed by ZELLIJ_PANE_ID so Claude can detect its project
-    # even after context-limit continuations (which don't re-run this wrapper).
-    if [ -n "$ZELLIJ_PANE_ID" ]; then
-        local _tab
-        _tab=$(zellij action dump-layout 2>/dev/null \
-               | grep 'focus=true' \
-               | grep 'tab name=' \
-               | sed 's/.*tab name="\([^"]*\)".*/\1/' \
-               | head -1)
-        [ -n "$_tab" ] && printf '%s' "$_tab" > "/tmp/claude-pane-${ZELLIJ_PANE_ID}"
-
-        # Record which monitor the cursor is on right now — cursor is in the terminal
-        # at invocation time, so this is the terminal's screen. beacon.py reads this.
-        python3 "$HOME/dev/cockpit/scripts/record-terminal-screen.py" \
-            "${ZELLIJ_PANE_ID}" 2>/dev/null &
-    fi
-
-    command claude "$@"
-    rm -f "/tmp/claude-pane-${ZELLIJ_PANE_ID}" "/tmp/claude-screen-${ZELLIJ_PANE_ID}"
-}
-
-codex() {
-    _agent_cd_from_tab_if_home || true
-    command codex --no-alt-screen "$@"
-}
-
-cockpit() {
-    cd "$HOME/dev/cockpit" || return 1
-    npm run dev "$@"
-}
+# claude() and codex() used to be defined here. Both were overridden ~130
+# lines below ("Override existing claude/codex"), so these copies never ran —
+# the live definitions are the later ones. cockpit() cd'd into ~/dev/cockpit,
+# which no longer exists (the repo became fleetcrown). Removed 2026-08-27.
 
 # Secrets (passwords, tokens) — loaded from .env, which is gitignored
 [ -f "$HOME/.env" ] && source "$HOME/.env"
 
 # --- Agent Orchestration Wrappers ---
 _agent_pre_launch() {
-    _agent_cd_from_tab_if_home || true
     if [ -n "$ZELLIJ_PANE_ID" ]; then
         local _tab
         _tab=$(zellij action dump-layout 2>/dev/null | grep 'focus=true' | grep 'tab name=' | sed 's/.*tab name="\([^"]*\)".*/\1/' | head -1)
