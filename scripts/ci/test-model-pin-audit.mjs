@@ -485,5 +485,255 @@ export class GroqProvider extends OpenAICompatibleProvider {
   );
 }
 
+// ── model MAPS, not just arrays ─────────────────────────────────────
+//
+// Third discovery in the same sweep, and it cost two more repos.
+//
+// Once arrays were readable, two repos still reported nothing, because their
+// ids live in object literals — and on OPPOSITE sides of the colon. Hirnli
+// keeps them as map values, Orangecat as map keys, including
+// `DEFAULT_GROQ_MODEL`, the baseline every free non-BYOK user gets. Both were
+// entirely retired and both read as clean.
+//
+// So the walker takes `{` as readily as `[`, and every quoted string in the
+// region is a candidate regardless of which side of the colon it is on.
+
+console.log("\nmodel maps");
+
+// Hirnli's shape: the id is the VALUE.
+const HIRNLI_ALIAS_MAP = `
+const GROQ_API_URL = 'https://api.groq.com/openai/v1/chat/completions';
+
+/** Available models with different rate limits */
+export const GROQ_MODELS = {
+  '70b': 'llama-3.3-70b-versatile',     // 12k TPM, best quality
+  '8b': 'llama-3.1-8b-instant',          // 20k TPM, faster, good for triage
+} as const;
+`;
+
+// Orangecat's shape: the id is the KEY, and the value is a nested object.
+const ORANGECAT_REGISTRY = `
+// Groq's best free models
+const GROQ_MODELS = {
+  // Fast, capable model - great for chat
+  'llama-3.3-70b-versatile': {
+    name: 'Llama 3.3 70B Versatile',
+    contextWindow: 128000,
+    maxOutputTokens: 32768,
+  },
+  'llama-3.1-8b-instant': {
+    name: 'Llama 3.1 8B Instant',
+    contextWindow: 128000,
+    maxOutputTokens: 8192,
+  },
+} as const;
+
+const GROQ_API_URL = 'https://api.groq.com/openai/v1';
+`;
+
+{
+  const ids = extractPins(HIRNLI_ALIAS_MAP).map((p) => p.id).sort();
+  check(
+    "ids that are map VALUES are found",
+    ids,
+    ["llama-3.1-8b-instant", "llama-3.3-70b-versatile"],
+  );
+  // '70b' and '8b' are the keys here. They are aliases, not ids, and must not
+  // be reported as pins — `looksLikeModelId` is what keeps them out.
+  check("the size aliases beside them are not mistaken for ids", ids.includes("8b"), false);
+}
+
+{
+  const pins = extractPins(ORANGECAT_REGISTRY);
+  const ids = pins.map((p) => p.id).sort();
+  check(
+    "ids that are map KEYS are found",
+    ids,
+    ["llama-3.1-8b-instant", "llama-3.3-70b-versatile"],
+  );
+  // Nested objects inside the map must not end the region early.
+  check("a nested object does not truncate the map", ids.length, 2);
+  // Human-readable names sit in the same nested objects.
+  check("display names inside the map are not pins", ids.includes("Llama 3.3 70B Versatile"), false);
+
+  for (const pin of pins) {
+    check(`${pin.id} in a map attributes to groq`, attribute(ORANGECAT_REGISTRY, pin.line), "groq");
+  }
+
+  const judged = judge(
+    pins.map((p) => ({ repo: "orangecat", path: "src/services/ai/groq.ts", line: p.line, id: p.id, vendor: "groq" })),
+    new Map([["groq", GROQ_LIVE]]),
+  );
+  check("and both are judged retired against the live catalogue", judged.filter((j) => j.state === "gone").length, 2);
+}
+
+{
+  // The walker must not mistake an ordinary import for a model collection.
+  check("an import naming models opens no region", modelListRegions(`import { getAllModels } from "./providers";`).length, 0);
+}
+
+// A size alias is not a model id.
+{
+  console.log("\nseparators");
+  check("a bare size token is not an id", looksLikeModelId("70b"), false);
+  check("nor is the two-character one", looksLikeModelId("8b"), false);
+  check("routed ids are ids", looksLikeModelId("openai/gpt-oss-120b"), true);
+  check("hyphenated ids are ids", looksLikeModelId("llama-3.3-70b-versatile"), true);
+  check("dotted ids are ids", looksLikeModelId("llama3.2"), true);
+  check("short hyphenated ids are ids", looksLikeModelId("codex-4"), true);
+}
+
+// A loop over models is not a declaration of models.
+//
+// Regression from the map support: `{` as an opener made
+// `for (const model of models) {` open a region across the whole loop body, so
+// the request headers inside it were read as ids and a Content-Type header was
+// reported as a retired Groq model. Widening a matcher is exactly when to check
+// what it now swallows.
+{
+  console.log("\ndeclarations only");
+
+  const LOOP = `
+  const models = groqModels();
+  for (const model of models) {
+    const response = await fetch(API_CONFIG.GROQ_API_URL, {
+      headers: {
+        Authorization: \`Bearer \${key}\`,
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify({ model, messages }),
+    });
+  }
+  `;
+
+  check("a for-of over models opens no region", modelListRegions(LOOP).length, 0);
+  check("so a content-type header is not a model", extractPins(LOOP).map((p) => p.id), []);
+
+  // The declaration forms must still open one.
+  check("a const array declaration still opens", modelListRegions(`const models = [`).length, 1);
+  check("an annotated declaration still opens", modelListRegions(`  models: AIModel[] = [`).length, 1);
+  check("a map declaration still opens", modelListRegions(`export const GROQ_MODELS = {`).length, 1);
+  check("an inline property still opens", modelListRegions(`models: ['a/b-1'],`).length, 1);
+}
+
+// `modelId` is not `model`.
+//
+// Regression found by re-running the live sweep after tightening the collection
+// walker to plural-only: a real retired id in Kivvi disappeared from the report.
+// Its declaration is singular (`const FALLBACK_MODEL: ModelSelection = {`), so
+// the walker correctly ignores it, and the single-id pattern was anchored on the
+// bare word `model` — which does not match `modelId`. Nothing covered it.
+{
+  console.log("\nsingle-id property shapes");
+
+  const KIVVI_FALLBACK = `
+const STORAGE_KEY = "kivvi-selected-model";
+
+// Fallback default — used before API loads or when stored model is unavailable
+const FALLBACK_MODEL: ModelSelection = {
+  providerId: "groq",
+  modelId: "llama-3.3-70b-versatile",
+};
+`;
+
+  const ids = extractPins(KIVVI_FALLBACK).map((p) => p.id);
+  check("a modelId property is a pin", ids.includes("llama-3.3-70b-versatile"), true);
+  check("the storage key beside it is not", ids.includes("kivvi-selected-model"), false);
+
+  check("model_id also reads", extractPins(`model_id = "openai/gpt-oss-120b"`).map((p) => p.id), ["openai/gpt-oss-120b"]);
+  check("modelName also reads", extractPins(`modelName: 'openai/gpt-oss-20b'`).map((p) => p.id), ["openai/gpt-oss-20b"]);
+
+  // A parameter annotation is still not a pin.
+  check("a typed parameter is not a pin", extractPins(`function f(model: string): boolean { return model.startsWith("qwen/"); }`).map((p) => p.id), []);
+}
+
+// A provider-keyed record names its own rows.
+//
+// OrangeCat's `gpt-4o-mini` was reported as a RETIRED OPENROUTER model. It is
+// not an OpenRouter id at all — there it would be `openai/gpt-4o-mini` — it is
+// OpenAI's, sitting under an `openai:` key. The nearest marker above it was
+// OpenRouter's base URL in the block before, so nearest-marker-above put it with
+// the wrong vendor and then judged it against a catalogue that was never going
+// to list it.
+//
+// The bare word `openai` cannot be a general marker: `api.groq.com/openai/v1`
+// contains it, and every `openai/gpt-oss-*` id Groq serves. Anchoring to a line
+// that STARTS with the key and a colon is what makes it safe.
+{
+  console.log("provider-keyed records");
+
+  const ORANGECAT_RUNTIME = `
+export const PROVIDER_BASE_URLS = {
+  openai: 'https://api.openai.com/v1',
+  groq: 'https://api.groq.com/openai/v1',
+  openrouter: 'https://openrouter.ai/api/v1',
+} as const;
+
+export const PROVIDER_RUNTIME = {
+  openai: {
+    baseUrl: PROVIDER_BASE_URLS.openai,
+    defaultModel: 'gpt-4o-mini',
+  },
+  openrouter: {
+    baseUrl: PROVIDER_BASE_URLS.openrouter,
+    defaultModel: 'nvidia/nemotron-3-super-120b-a12b:free',
+  },
+};
+`;
+
+  const pins = extractPins(ORANGECAT_RUNTIME);
+  const at = (id) => pins.find((p) => p.id === id);
+
+  check("both defaults are extracted", pins.length >= 2, true);
+  check(
+    "an id under an openai: key belongs to openai",
+    attribute(ORANGECAT_RUNTIME, at("gpt-4o-mini").line),
+    "openai",
+  );
+  check(
+    "and the one under openrouter: belongs to openrouter",
+    attribute(ORANGECAT_RUNTIME, at("nvidia/nemotron-3-super-120b-a12b:free").line),
+    "openrouter",
+  );
+
+  // OpenAI is not queryable, so its pin must be reported UNCHECKED — never
+  // judged against a catalogue that could not list it.
+  const judged = judge(
+    pins.map((p) => ({ repo: "orangecat", path: "src/config/ai-provider-runtime.ts", line: p.line, id: p.id, vendor: attribute(ORANGECAT_RUNTIME, p.line) })),
+    new Map([["openrouter", new Set(["nvidia/nemotron-3-super-120b-a12b:free"])]]),
+  );
+  check("the openai pin is unchecked, not retired", judged.find((j) => j.id === "gpt-4o-mini")?.state, "unchecked");
+  check("the openrouter pin is confirmed live", judged.find((j) => j.id === "nvidia/nemotron-3-super-120b-a12b:free")?.state, "ok");
+}
+
+// Ollama is local: its tags are attributed, never judged.
+{
+  console.log("\nlocal providers");
+
+  const EVIG_ENV = `
+# Groq (cloud)
+GROQ_API_KEY=
+GROQ_MODEL=openai/gpt-oss-120b
+
+# Ollama URL (local LLM - for local embeddings only)
+OLLAMA_URL=http://localhost:11434
+OLLAMA_MODEL=llama3.2
+`;
+
+  const pins = extractPins(EVIG_ENV);
+  const ollamaPin = pins.find((p) => p.id === "llama3.2");
+  check("the ollama tag is extracted", Boolean(ollamaPin), true);
+  // Before this, the nearest marker above was GROQ_MODEL and `llama3.2` was
+  // reported as a retired GROQ model. It is a valid Ollama tag on a healthy
+  // line; Groq simply never served anything by that name.
+  check("and attributed to ollama, not groq", attribute(EVIG_ENV, ollamaPin.line), "ollama");
+
+  const judged = judge(
+    [{ repo: "evig", path: ".env.example", line: ollamaPin.line, id: "llama3.2", vendor: "ollama" }],
+    new Map([["groq", GROQ_LIVE]]),
+  );
+  check("a local tag is unchecked, never retired", judged[0].state, "unchecked");
+}
+
 console.log(failures ? `\n✗ ${failures} failure(s)` : "\n✓ all checks pass");
 process.exit(failures ? 1 : 0);

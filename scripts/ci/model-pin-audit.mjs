@@ -94,6 +94,9 @@ export const VENDORS = [
     baseUrl: "https://api.groq.com/openai/v1",
     keyEnv: "GROQ_API_KEY",
     markers: [/groq/i],
+    // A provider-keyed record — `groq: { defaultModel: '...' }` — names the
+    // vendor for everything inside it, and sits closer to the pin than any URL.
+    keyMarker: /^[ \t]*['"]?groq['"]?\s*:/m,
   },
   {
     id: "openrouter",
@@ -101,16 +104,48 @@ export const VENDORS = [
     baseUrl: "https://openrouter.ai/api/v1",
     keyEnv: "OPENROUTER_API_KEY",
     markers: [/openrouter/i],
+    keyMarker: /^[ \t]*['"]?openrouter['"]?\s*:/m,
   },
   // Not queryable here — no catalogue call is wired for these. They are listed
   // so their ids are ATTRIBUTED and reported unchecked, rather than falling to
   // whichever queryable vendor happens to sit nearest in the file. Markers are
   // deliberately specific: bare /openai/ would match Groq's own
   // `api.groq.com/openai/v1` path and every `openai/gpt-oss-*` id it serves.
-  { id: "xai", queryable: false, markers: [/api\.x\.ai/i, /\bXAI_API_KEY\b/, /\bgrok\b/i] },
-  { id: "anthropic", queryable: false, markers: [/api\.anthropic\.com/i, /\bANTHROPIC_API_KEY\b/] },
-  { id: "openai", queryable: false, markers: [/api\.openai\.com/i, /\bOPENAI_API_KEY\b/] },
-  { id: "google", queryable: false, markers: [/generativelanguage\.googleapis/i, /\bGEMINI_API_KEY\b/] },
+  // Ollama runs on the user's own machine, so "is this id still served" is not
+  // a question with a fleet-wide answer — whatever the operator pulled is what
+  // exists. It is listed so its ids are ATTRIBUTED rather than falling to the
+  // nearest cloud vendor above them.
+  //
+  // Without this, evig's `.env.example` line `OLLAMA_MODEL=llama3.2` was
+  // attributed to Groq — the nearest marker above it — and reported RETIRED.
+  // `llama3.2` is a perfectly valid Ollama tag on a healthy line; Groq simply
+  // never served anything by that name. Same class as the pricing-table false
+  // positive: a true statement about the wrong vendor.
+  {
+    id: "ollama",
+    queryable: false,
+    markers: [/\bOLLAMA_[A-Z_]+\b/, /\bollama\b/i, /localhost:11434/, /127\.0\.0\.1:11434/],
+  },
+  //
+  // `keyMarker` is how a provider-keyed record names its own rows. OrangeCat
+  // writes:
+  //
+  //     export const PROVIDER_BASE_URLS = { openai: '...', openrouter: '...' }
+  //     export const PROVIDER_RUNTIME = {
+  //       openai: { baseUrl: ..., defaultModel: 'gpt-4o-mini' },
+  //
+  // The pin belongs to OpenAI, but the nearest marker above it was OpenRouter's
+  // URL in the block before — so `gpt-4o-mini` was reported as a retired
+  // OpenRouter model. It is not an OpenRouter id at all; there it would be
+  // `openai/gpt-4o-mini`. The bare key `openai:` is deliberately not in
+  // `markers`, because `api.groq.com/openai/v1` contains that word — anchoring
+  // it to the start of a line followed by a colon is what makes it safe.
+  { id: "xai", queryable: false, markers: [/api\.x\.ai/i, /\bXAI_API_KEY\b/, /\bgrok\b/i], keyMarker: /^[ \t]*['"]?xai['"]?\s*:/m },
+  { id: "anthropic", queryable: false, markers: [/api\.anthropic\.com/i, /\bANTHROPIC_API_KEY\b/], keyMarker: /^[ \t]*['"]?anthropic['"]?\s*:/m },
+  { id: "openai", queryable: false, markers: [/api\.openai\.com/i, /\bOPENAI_API_KEY\b/], keyMarker: /^[ \t]*['"]?openai['"]?\s*:/m },
+  { id: "google", queryable: false, markers: [/generativelanguage\.googleapis/i, /\bGEMINI_API_KEY\b/], keyMarker: /^[ \t]*['"]?google['"]?\s*:/m },
+  { id: "together", queryable: false, markers: [/api\.together\.xyz/i, /\bTOGETHER_API_KEY\b/], keyMarker: /^[ \t]*['"]?together['"]?\s*:/m },
+  { id: "deepseek", queryable: false, markers: [/api\.deepseek\.com/i, /\bDEEPSEEK_API_KEY\b/], keyMarker: /^[ \t]*['"]?deepseek['"]?\s*:/m },
 ];
 
 /**
@@ -241,45 +276,87 @@ export function looksLikeModelId(s) {
   if (/\.(ts|tsx|js|mjs|cjs|json|css|scss|md|png|jpe?g|svg|ico|txt|ya?ml)$/i.test(s)) return false;
   if (/^[A-Z][A-Z0-9_]*$/.test(s)) return false; // SCREAMING_CASE is an env name
   // Model ids essentially always carry a version digit or a vendor/ prefix.
+  // A vendor id always carries a separator: a slash for routed ids
+  // (`openai/gpt-oss-120b`), or a hyphen or dot within the name
+  // (`llama-3.3-70b-versatile`, `llama3.2`, `codex-4`). Nothing in either live
+  // catalogue is a single unseparated word.
+  //
+  // Without this, reading model MAPS turned their keys into findings: Hirnli's
+  // alias table is `{ '70b': '...', '8b': '...' }`, and `70b` has a digit and no
+  // space, so it read as a pin and would have been reported retired at Groq. It
+  // is a size alias. `8b` escaped only by being two characters long, which is
+  // not a rule anyone should rely on.
+  if (!/[/.-]/.test(s)) return false;
+
   return /\d/.test(s) || s.includes("/");
 }
 
 /**
- * The lines making up each `models = [ ... ]` array, with real line numbers.
+ * The lines making up each `models` collection, with real line numbers.
  *
  * A tiny bracket walker rather than a regex, because the shapes in this fleet
- * defeat any single pattern: `models: ['a']`, `models = [`, and Kivvi's
- * `models: AIModel[] = [` all mean the same thing, and the last one hid two
- * retired ids from the audit for as long as this was a regex.
+ * defeat any single pattern. All four of these are one repo's way of saying the
+ * same thing, and every one of them hid a retired id at some point:
  *
- * The opening bracket is the LAST one on the declaring line, which is what
- * makes the annotated form work — in `models: AIModel[] = [`, the first `[`
- * belongs to the type and closes immediately, so anchoring to it would read an
- * empty array and report nothing. Exactly the silent miss this replaces.
+ *     models: ['a', 'b']                        an inline array
+ *     models: AIModel[] = [                     an array behind a TS annotation
+ *     GROQ_MODELS = { '8b': 'llama-...' }       a map whose VALUES are ids
+ *     GROQ_MODELS = { 'llama-...': { ... } }    a map whose KEYS are ids
+ *
+ * Maps were the second discovery and cost two more repos. Hirnli kept its ids
+ * as map values and Orangecat as map keys — including `DEFAULT_GROQ_MODEL`,
+ * the baseline every free user gets — and an array-only walker read straight
+ * past both. So the opener is `[` or `{`, and every quoted string in the region
+ * is a candidate regardless of which side of the colon it sits on.
+ *
+ * The opening bracket is the LAST one on the declaring line. That is what makes
+ * the annotated form work: in `models: AIModel[] = [`, the first `[` belongs to
+ * the type and closes immediately, so anchoring to it reads an empty array and
+ * reports nothing — a silent miss, the worst output an audit has.
  */
 export function modelListRegions(text) {
   const lines = text.split("\n");
   const regions = [];
+  const CLOSER = { "[": "]", "{": "}" };
 
   for (let i = 0; i < lines.length; i++) {
-    // Greedy on purpose: it backtracks to the LAST `[` within reach.
-    const opener = /\bmodels?\b[^\n]{0,80}\[/i.exec(lines[i]);
+    // Greedy on purpose: it backtracks to the LAST opener within reach.
+    //
+    // `\w*` before `models` is load-bearing. A bare `\bmodels?\b` does NOT
+    // match `GROQ_MODELS`, because the underscore before it is a word character
+    // so there is no boundary there — which is precisely why two repos' model
+    // maps read as empty. Almost every map in this fleet is named that way.
+    //
+    // The `[:=]` immediately after the token is what makes this a DECLARATION
+    // rather than any line that mentions models. Without it,
+    // `for (const model of models) {` opened a region over the whole loop body
+    // — and the request headers inside were then read as model ids, so a
+    // `Content-Type: application/json` was reported as a retired Groq model.
+    // PLURAL only. A singular `model:` is a parameter or a single-id property,
+    // and `function supportsReasoningEffort(model: string): boolean {` is a
+    // declaration by the rule above — it opened a region over the function body
+    // and read the `startsWith("qwen/")` prefixes inside as retired ids.
+    // Collections are plural; single ids are matched on one line by the
+    // patterns in extractPins.
+    const opener = /\b[a-z0-9_]*models\b\s*[:=][^\n]{0,80}[[{]/i.exec(lines[i]);
     if (!opener) continue;
 
+    const open = opener[0].at(-1);
+    const close = CLOSER[open];
     const region = [];
     let depth = 0;
     let opened = false;
 
-    // A models array running past 200 lines is not a models array.
+    // A models collection running past 200 lines is not a models collection.
     for (let j = i; j < lines.length && j < i + 200; j++) {
       const segment = j === i ? lines[j].slice(opener.index + opener[0].length - 1) : lines[j];
       region.push({ line: j + 1, text: segment });
 
       for (const ch of segment) {
-        if (ch === "[") {
+        if (ch === open) {
           depth++;
           opened = true;
-        } else if (ch === "]") {
+        } else if (ch === close) {
           depth--;
         }
       }
@@ -314,8 +391,22 @@ export function extractPins(text) {
     if (!found.has(id)) found.set(id, line);
   };
 
-  // 1a. model: 'x'  — a single id on one line
-  for (const m of text.matchAll(/\bmodels?\s*[:=]\s*['"`]([^'"`\n]{0,120})['"`]/gi)) {
+  // 1a. model: 'x'  — a single id on one line.
+  //
+  // The `id|name` suffix is not decoration. Kivvi's fallback reads
+  //
+  //     const FALLBACK_MODEL: ModelSelection = {
+  //       providerId: "groq",
+  //       modelId: "llama-3.3-70b-versatile",
+  //     };
+  //
+  // and `modelId` is not `model`, so a pattern anchored on the bare word walked
+  // straight past a retired id sitting in the app's default model selection.
+  // The declaration above it is singular, so the collection walker does not
+  // cover it either — this line is the only thing that does.
+  for (const m of text.matchAll(
+    /\b[a-z0-9_]*model(?:s|id|_id|name|_name)?\b\s*[:=]\s*['"`]([^'"`\n]{0,120})['"`]/gi,
+  )) {
     remember(m[1], m.index);
   }
 
@@ -337,7 +428,15 @@ export function extractPins(text) {
   // attribution is measured in lines from the pin.
   for (const region of modelListRegions(text)) {
     for (const { line, text: lineText } of region) {
-      for (const q of lineText.matchAll(/['"`]([^'"`\n]+)['"`]/g)) rememberAt(q[1], line);
+      // Comments are stripped first. A model list is exactly where someone
+      // documents the id they just replaced, and such notes are usually written
+      // in backticks — so without this, a comment reading "replaces
+      // `meta-llama/llama-3.2-3b-instruct:free`, which was retired" reports
+      // that id as a live pin, in the very commit that removed it. The audit
+      // would be reporting on prose instead of code: the exact failure it
+      // exists to catch elsewhere.
+      const code = lineText.replace(/\/\*[\s\S]*?\*\//g, "").replace(/\/\/.*$/, "");
+      for (const q of code.matchAll(/['"`]([^'"`\n]+)['"`]/g)) rememberAt(q[1], line);
     }
   }
 
@@ -383,8 +482,14 @@ export function attribute(text, line, vendors = VENDORS, maxDistance = MAX_ATTRI
   const distances = (vendor) => {
     let above = Infinity;
     let below = Infinity;
+    // `keyMarker` counts as a mention: in a provider-keyed record, the row's
+    // own key is the most local and most reliable statement of which vendor a
+    // pin belongs to — closer than any base URL, and unambiguous.
+    const mentions = (l) =>
+      vendor.markers.some((re) => re.test(l)) || (vendor.keyMarker?.test(l) ?? false);
+
     for (let i = 0; i < lines.length; i++) {
-      if (!vendor.markers.some((re) => re.test(lines[i]))) continue;
+      if (!mentions(lines[i])) continue;
       const d = i + 1 - line;
       if (d <= 0) above = Math.min(above, -d);
       else below = Math.min(below, d);
@@ -406,7 +511,9 @@ export function attribute(text, line, vendors = VENDORS, maxDistance = MAX_ATTRI
     if (fromBelow.length > 1 && fromBelow[0].below < fromBelow[1].below) return fromBelow[0].id;
   }
 
-  const named = vendors.filter((v) => v.markers.some((re) => re.test(text)));
+  const named = vendors.filter(
+    (v) => v.markers.some((re) => re.test(text)) || (v.keyMarker?.test(text) ?? false),
+  );
   return named.length === 1 ? named[0].id : null;
 }
 
