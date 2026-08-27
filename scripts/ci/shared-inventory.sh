@@ -25,11 +25,11 @@
 #   shared-inventory.sh --check         # ratchet: exit 1 if any count ROSE
 #   shared-inventory.sh --update        # rewrite the baseline (do this in a PR)
 #
-# Env: GH_OWNER (default maonakamoto), GH_LIMIT (default 100)
+# Env: GH_OWNER (default catomean), GH_LIMIT (default 100)
 
 set -uo pipefail
 
-OWNER="${GH_OWNER:-maonakamoto}"
+OWNER="${GH_OWNER:-catomean}"
 LIMIT="${GH_LIMIT:-100}"
 HERE="$(cd "$(dirname "$0")" && pwd)"
 BASELINE="${SHARED_INVENTORY_BASELINE:-$HERE/shared-inventory.baseline}"

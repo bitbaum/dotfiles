@@ -37,13 +37,13 @@
 #   scripts/ci/verify-floor-audit.sh --warn-only  # report, always exit 0
 #
 # Env:
-#   GH_OWNER   GitHub owner to enumerate (default: maonakamoto)
+#   GH_OWNER   GitHub owner to enumerate (default: catomean)
 #   GH_LIMIT   max repos to inspect (default: 100)
 
 set -uo pipefail   # NOT -e: nearly every step below asks a QUESTION about a
                    # remote repo, and a 404 is an answer, not a crash.
 
-OWNER="${GH_OWNER:-maonakamoto}"
+OWNER="${GH_OWNER:-catomean}"
 LIMIT="${GH_LIMIT:-100}"
 WARN_ONLY=0
 [ "${1:-}" = "--warn-only" ] && WARN_ONLY=1
