@@ -23,14 +23,31 @@ the inventory underneath it is **generated**, and the number it produces is a
 | Package | Install | Replaces |
 |---|---|---|
 | [`ai-forms`](https://github.com/maonakamoto/ai-forms) | `npm i github:maonakamoto/ai-forms#v0.1.0` | per-app "fill this form from prose" + conversational refinement. Headless — ships **no markup**, so each app keeps its own styling. |
-| [`ai-kit`](https://github.com/maonakamoto/ai-kit) | `npm i github:maonakamoto/ai-kit#v0.3.0` | **the AI layer, in one install** — which model to call, whether the vendor still lists it, the three kinds of 429, fair-share of a free tier, and (re-exported) `ai-forms`. Renamed from `ai-ration` 2026-08-26: the name described one of five modules, and the package had one adopter while five repos that skipped it went down together to a retired model id. |
+| [`ai-kit`](https://github.com/maonakamoto/ai-kit) | `npm i github:maonakamoto/ai-kit#v0.4.0` | **the AI layer, in one install** — which model to call, whether the vendor still lists it, the three kinds of 429, fair-share of a free tier, and (re-exported) `ai-forms`. Renamed from `ai-ration` 2026-08-26: the name described one of five modules, and the package had one adopter while five repos that skipped it went down together to a retired model id. |
 | [`threadkit`](https://github.com/maonakamoto/threadkit) | `npm i threadkit` | multi-participant message threads where *permission is participation*, not a role or an ownership column. Headless pure functions, so "who may read this" is unit-testable instead of buried in a `WHERE` clause. AI participants obey the same visibility rules. **ESM-only.** |
 | [`limitkit`](https://github.com/maonakamoto/limitkit) | `npm i github:maonakamoto/limitkit#v0.1.0` | the fleet's **12 hand-rolled rate limiters** (this file's own "next extraction" row). Sliding/fixed windows over an injectable two-method `Store`; **bounded** memory default (the unbounded-Map leak is impossible by construction); standard `X-RateLimit-*` + `Retry-After` headers — what orangecat's ADR-0002 specified seven months before anything enforced it; `clientIp()`. Refusals count nothing, so a hammered key recovers. Ships no middleware and **no limit values** — how many attempts a route allows is app semantics, asserted locally. |
 
 **Adopted:** `ai-forms` — fleetcrown, evig, aoz-housing, surf-your-life.
-`ai-kit` — fleetcrown, **and this repo** (`model-pin-audit.mjs` calls
-`checkCatalog`; the audit needed exactly the vendor query the package owns, so
-writing a second one here would have been this file's own sin).
+`ai-kit` — fleetcrown, aoz-housing, truthseeker, botsmann, **and this repo**
+(`model-pin-audit.mjs` calls `checkCatalog`; the audit needed exactly the vendor
+query the package owns, so writing a second one here would have been this file's
+own sin).
+
+Adoption went 2 -> 5 on 2026-08-27, all of it as a side effect of repairing the
+outage rather than as a migration project — which is the only way it has ever
+moved here. Three repos deliberately did NOT adopt, and the reason is the same
+in each: kivvi, orangecat and evig already own model REGISTRIES carrying context
+windows, tool/vision support and per-token cost, which `ai-kit` does not model.
+Installing it beside one of those adds a second source of model truth to a repo
+whose problem was having two. They were repaired in place and left pointing at
+the daily audit instead. Merging a registry into `ai-kit` is a real design
+question and belongs to a human, not to an outage.
+
+**v0.4.0 is breaking:** form filling moved off the root export to `ai-kit/forms`.
+One install, one version, one import path per concern — the root re-export made
+a chain-only consumer load `ai-forms` (ESM-only) and broke AOZ's Jest run inside
+a module it never imported. Fixed in the package rather than with a
+`transformIgnorePatterns` line per adopter.
 
 **On merging packages.** `ai-kit` absorbed `ai-ration` and re-exports
 `ai-forms`, because to an app "which model do we call", "AI chat" and "AI form
@@ -83,7 +100,7 @@ fleet-wide checker.
 | Script | Answers |
 |---|---|
 | `scripts/ci/verify-floor-audit.sh` | does every repo's `verify` actually run lint + typecheck + test? |
-| `scripts/ci/model-pin-audit.mjs` | is any model id the fleet pins no longer served by its vendor? Zero tokens — one `GET /models` per vendor — so it runs DAILY. Uses `ai-ration`'s `checkCatalog` rather than a second vendor query. Self-tested by `scripts/ci/test-model-pin-audit.mjs`, which pins both sides and both real defects the first run produced: xAI's `grok-3-mini` misfiled under Groq, and a computed `${...}` id reported as a pin. |
+| `scripts/ci/model-pin-audit.mjs` | is any model id the fleet pins no longer served by its vendor? Zero tokens — one `GET /models` per vendor — so it runs DAILY. Uses `ai-kit`'s `checkCatalog` rather than a second vendor query. Self-tested by `scripts/ci/test-model-pin-audit.mjs` — **102 checks, no network, no key, no checkout**, every fixture the real code that fooled it. Using it to repair seven repos on 2026-08-27 exposed nine faults in both directions, and the blind spots were not random: they mirrored the shapes people write (`GROQ_MODELS = {` defeats `\bmodels?\b`; `models: AIModel[] = [` defeats an array pattern; `modelId` is not `model`). It also read ids out of COMMENTS — reporting a retired id in the very commit that removed it. Never trust its first clean run after widening; re-run the live sweep and read every line. |
 | `scripts/ci/ui-defect-audit.mjs` | do any live sites ship an interactive label below its WCAG AA floor, or a stack whose rows start at different x? Renders each site; no repo checkout involved. Self-tested by `scripts/ci/test-ui-defect-audit.mjs`, which pins BOTH sides — the real defect is still caught, correct markup stays silent. |
 
 Both report into a weekly workflow's job summary rather than only a log.
@@ -97,7 +114,7 @@ Ranked by (copies × how identical the logic is). Counts from
 |---|---|---|
 | `auto-merge-sweep.sh` | ~~22~~ **6** | **EXTRACTED 2026-08-16/20.** Sixteen repos call the canonical as a reusable workflow, each verified to actually *run* it (a sweep that fails to start looks exactly like one with nothing to do). The six remaining are deliberate: dotfiles is the canonical home and runs it directly; ai-forms, datacat, petvity, solon had dirty working trees owned by other sessions when swept — convert when clear. The two repos that had ever *tested* their copies (evig, orangecat) had that coverage ported into the canonical suite **before** deletion: 17 cases, mutation-proven. |
 | rate limiting | **14 → adopting** | **Extracted 2026-08-20 as [`limitkit`](https://github.com/maonakamoto/limitkit)** (see registry above). fleetcrown converted as the proving consumer; 13 files remain across 8 repos, orangecat first in line (its ADR-0002 becomes a 12-line `Store` adapter + three deletions). The ratchet holds the count until each adoption lands. |
-| AI provider client | **16** | evig 7, orangecat 5. `ai-ration` already owns the hard part (chain, 429, budget); these are the callers. **Priced 2026-08-26:** Groq retired the llama-3.x family and six pins across botsmann, evig, kivvi, orangecat and truthseeker died at once, with three deployed apps failing live and AOZ reporting a missing key it already had. Every one of those repos hand-rolls this layer; fleetcrown, which adopted the package, was unaffected. |
+| AI provider client | **16** | evig 7, orangecat 5. `ai-kit` already owns the hard part (chain, 429, budget); these are the callers. **Priced 2026-08-26, re-priced 2026-08-27:** Groq retired the llama-3.x family and the damage was far wider than the first count. Seven repos were broken, not five — the audit could not see two of them — and inside a repo the id was written down **two to four times**. Kivvi took three PRs to remove one retired id: it lived in the provider registry, an app's inline fetch body, the fallback chain, and a client hook's `FALLBACK_MODEL`. Each pass only found the copies the tooling could see. That is the cost of duplication measured rather than argued. fleetcrown, which adopted the package, was unaffected throughout. |
 | logger | **10** | sbb-lost-found alone has 4. |
 | health route | **8** | Identical shape in 8 repos; a 20-line contract. |
 | ~~`@ai-native-cms/core`~~ | — | **Withdrawn — measurement error.** `maonakamoto/revampit` *redirects* to `maonakamoto/evig` (renamed in the pivot); the "two repos" with byte-identical trees were two clones of ONE repo. Nothing to extract. Two directories are not two repos: check `git remote -v` before reporting cross-repo duplication. |
@@ -134,7 +151,7 @@ stays green until the first consumer installs it.
 
 **4. Ship no HTTP client.** Every app has its own calling conventions, retries
 and logging. Replacing those is a rewrite, not an adoption. Supply the
-decisions; leave the fetch alone. This is why `ai-ration` has no client and
+decisions; leave the fetch alone. This is why `ai-kit` has no client and
 `ai-forms` has no markup.
 
 **5. The ratchet.** `scripts/ci/shared-inventory.sh --check` runs on every PR
