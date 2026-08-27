@@ -46,8 +46,6 @@ link .config/kitty/kitty.conf
 link .config/starship.toml
 link .config/zellij/config.kdl
 
-# Project mapping
-link .config/claude-projects.conf
 link .config/claude-prompts-meta.json
 
 # Editor
