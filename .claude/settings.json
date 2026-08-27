@@ -45,6 +45,14 @@
             "timeout": 150
           }
         ]
+      },
+      {
+        "hooks": [
+          {
+            "type": "command",
+            "command": "/home/g/.claude/hooks/fleetcrown-session-end.sh"
+          }
+        ]
       }
     ],
     "PreToolUse": [
@@ -90,6 +98,5 @@
   "tui": "fullscreen",
   "editorMode": "vim",
   "agentPushNotifEnabled": true,
-  "voiceEnabled": true,
-  "model": "claude-fable-5[1m]"
+  "voiceEnabled": true
 }
