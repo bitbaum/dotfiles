@@ -81,7 +81,7 @@ FAKE
   chmod +x "$dir/gh"
 
   local out status
-  out=$(PATH="$dir:$PATH" GH_REPO=catomean/fixture BASE_BRANCH=main \
+  out=$(PATH="$dir:$PATH" GH_REPO=bitbaum/fixture BASE_BRANCH=main \
         DEPLOY_WORKFLOW="$deploy_wf" \
         bash "$SWEEP" 2>&1)
   status=$?

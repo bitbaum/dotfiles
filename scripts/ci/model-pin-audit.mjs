@@ -59,7 +59,7 @@
  *   node scripts/ci/model-pin-audit.mjs --warn-only    # report, always exit 0
  *   node scripts/ci/model-pin-audit.mjs --local        # scan ~/dev checkouts
  *
- * Env: GH_OWNER (default catomean), GH_LIMIT (default 100),
+ * Env: GH_OWNER (default bitbaum), GH_LIMIT (default 100),
  *      FLEET_ROOT (default ~/dev, --local only),
  *      AI_KIT_FROM (path to a repo that installs ai-kit),
  *      GROQ_API_KEY / OPENROUTER_API_KEY (to read the catalogues).
@@ -74,7 +74,7 @@ const exec = promisify(execFile);
 
 const WARN_ONLY = process.argv.includes("--warn-only");
 const LOCAL = process.argv.includes("--local");
-const OWNER = process.env.GH_OWNER ?? "catomean";
+const OWNER = process.env.GH_OWNER ?? "bitbaum";
 const GH_LIMIT = process.env.GH_LIMIT ?? "100";
 const FLEET_ROOT = process.env.FLEET_ROOT ?? join(homedir(), "dev");
 

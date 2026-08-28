@@ -66,7 +66,7 @@ jobs:
         run: |
           mkdir -p "$RUNNER_TEMP/air" && cd "$RUNNER_TEMP/air"
           npm init -y >/dev/null
-          npm i --no-audit --no-fund github:catomean/ai-kit#v0.3.0 >/dev/null
+          npm i --no-audit --no-fund github:bitbaum/ai-kit#v0.3.0 >/dev/null
 
       - name: Audit the fleet's pins
         if: github.event_name != 'pull_request'
