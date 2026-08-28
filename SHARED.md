@@ -64,7 +64,7 @@ implementations.
 `sitekit` — substrata (proving consumer, converted the day the package
 shipped: −577 lines of local renderer, and its test now validates the whole
 site against the shared schema, so a breaking schema change fails in the
-consumer's CI first). **Next: camille-boulangerie, aslan-tattoo, wild-spirit**
+consumer's CI first). **Next: camille-boulangerie (PR open), s-ink (sinktattoo.com), wild-spirit**
 — the three real sites that make the union's gaps (images, contact, menus)
 visible on sites we own before the schema is pointed at strangers.
 **Not yet:** orangecat and kivvi still carry their own form-assist; kivvi, evig,
