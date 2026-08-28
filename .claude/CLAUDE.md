@@ -135,15 +135,15 @@ Concrete forms, cheapest first:
 (lint + typecheck + test) that CI calls verbatim — the check bundle is defined
 once, run identically locally and on the shared branch. Green `verify` locally ⇒
 green CI. Run it before declaring any change done. (Golden templates:
-`dotfiles/templates/ci/`.)
+`fleet/templates/ci/`.)
 
-**Check `dotfiles/SHARED.md` before building anything cross-cutting** — AI
+**Check `fleet/SHARED.md` before building anything cross-cutting** — AI
 calls, form fill, rate limiting, email, logging, health routes, CI sweeps. If a
 package there already owns it, install it; do not write a second one. Measured
 2026-08-16: `auto-merge-sweep.sh` exists in 22 repos in 8 different versions,
 and rate limiting has 14 implementations (orangecat alone has 4, and its ADR to
 unify them has been "Proposed" since January while the count doubled). The
-duplication count is a ratchet — `scripts/ci/shared-inventory.sh --check` — and
+duplication count is a ratchet — `fleet: scripts/ci/shared-inventory.sh --check` — and
 it may fall or hold but never rise. If a copy really is justified, raise the
 baseline in the same PR so a human sees the decision instead of inheriting it.
 
