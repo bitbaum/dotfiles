@@ -98,6 +98,5 @@
   "tui": "fullscreen",
   "editorMode": "vim",
   "agentPushNotifEnabled": true,
-  "voiceEnabled": true,
-  "model": "sonnet"
+  "voiceEnabled": true
 }
