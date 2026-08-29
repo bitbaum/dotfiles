@@ -17,3 +17,10 @@ session_serialization false
 // instead of the parent shell. Replace ALL resurrected commands with bash so panes
 // get working shells. Claude's memory handles session context, not zellij.
 post_command_discovery_hook "echo /bin/bash"
+
+// Without this, a new tab/pane inherits the focused pane's cwd — so opening a
+// tab while sitting in dotfiles or a repo worktree silently starts the new
+// shell (and any agent session in it) there too. That's how files meant for
+// another project ended up written into dotfiles. Pin new tabs/panes to home
+// so every new tab starts neutral; cd into a project explicitly.
+default_cwd "/home/g"

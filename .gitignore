@@ -13,3 +13,7 @@ __pycache__/
 
 # Per-session agent worktrees — scratch, never part of the repo.
 .claude/worktrees/
+
+# FleetCrown Fleet Runner generates these on startup and rewrites them.
+# Their source is FleetCrown (capture-hook.ts), not this repo.
+.claude/hooks/fleetcrown-*.sh
