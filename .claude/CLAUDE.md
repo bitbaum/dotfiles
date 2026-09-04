@@ -2,7 +2,7 @@
 
 **Purpose**: Single Source of Truth for universal engineering principles.
 **Usage**: Import in project CLAUDE.md files with `@~/.claude/CLAUDE.md`
-**Last Updated**: 2026-02-24
+**Last Updated**: 2026-09-04
 
 ---
 
@@ -543,21 +543,33 @@ Every studio app is self-hosted on the single Hetzner box "bitbaum"
 deploy branch, monitor the run to completion before reporting done:
 
 ```bash
-# gh run list can return the PREVIOUS run right after a push — filter by the SHA
-# you just pushed, and give Actions a moment to register it.
+# Match the SHA *and* the workflow name. A commit now triggers three runs (CI,
+# Deploy, Auto-merge) and a scheduled sweep can be running against the same SHA;
+# matching on SHA alone picks whichever finished first. That is how a green
+# "deploy" was once reported for a scheduled auto-merge sweep while the real
+# Deploy run was still in progress and the box served the previous release.
 sleep 6
 sha=$(git rev-parse HEAD)
-run=$(gh run list --limit 10 --json databaseId,headSha \
-  --jq "map(select(.headSha==\"$sha\"))[0].databaseId")
-[ -n "$run" ] && gh run watch "$run" --exit-status && echo "✓ CI/deploy green" \
-  || { echo "✗ deploy failed"; gh run view "$run" --log-failed | tail -40; }
+run=$(gh run list --limit 20 --json databaseId,headSha,name \
+  --jq "map(select(.headSha==\"$sha\" and .name==\"Deploy\"))[0].databaseId")
+[ -n "$run" ] || echo "no Deploy run for $sha yet — wait, do not assume"
+[ -n "$run" ] && gh run watch "$run" --exit-status && echo "deploy run green" \
+  || { echo "deploy failed"; gh run view "$run" --log-failed | tail -40; }
 ```
 
-Then confirm the app actually came back up — CI green ≠ live:
+Then confirm THIS commit is the one serving. A green run is not a deployment:
+the release symlink is the state, the workflow is only a wrapper around it.
 
 ```bash
-curl -fsS https://<app>.orangecat.ch/api/health && echo "  ✓ live"
+ssh ubuntu@167.233.22.31 "ls -l /opt/<app>/app; systemctl is-active <app>-app"
+# -> /opt/<app>/app -> /opt/<app>/releases/<timestamp>-<short sha>
+#    the short sha MUST be the commit you just pushed
+curl -fsS https://<app>.orangecat.ch/api/health && echo "  live"
 ```
+
+And a health check is not a feature check — it usually only proves the process
+is up. Exercise the thing you changed: load the page, call the endpoint, read
+the value back.
 
 If it fails: read the failed job logs (`gh run view <run> --log-failed`), or ssh
 `ubuntu@167.233.22.31` and check `journalctl -u <app>-app -n 50` / `systemctl
