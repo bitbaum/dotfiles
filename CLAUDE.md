@@ -52,6 +52,25 @@ bash -n .claude/hooks/*.sh install.sh      # what this repo's CI runs
 **After editing a hook**: takes effect on the next session event. There is no
 daemon to restart.
 
+## Knowing what the other agents are doing
+
+Ten to twenty sessions run at once, across a dozen projects. Two things follow,
+and both have cost real work:
+
+**Run `scripts/fleet-status.sh` when you start.** It prints every live session
+grouped by project, and what each repo has moved today. The session registry
+alone gives a one-line name; this gives the picture. Use it before
+wide-blast-radius work — a shared type layer, a CI workflow, a migration — where
+what collides is *intent*, which worktrees do not isolate.
+
+**Memory is loaded from the session's CWD**, `~/.claude/projects/<slug>/memory/`.
+A lesson written while working on project A is invisible to an agent sitting in
+project B, and a session whose cwd is `dotfiles` but whose work is `hirnli`
+files its memories under `dotfiles`. That happened: 23 hirnli lessons were
+written where no hirnli agent could ever read them. Write a memory where the
+agents who need it will be sitting, and if it is a fleet-wide lesson, name the
+file in the other project's `MEMORY.md` rather than copying it.
+
 ## Project detection
 
 Use `cwd`. The session registry at `~/.claude/sessions/<pid>.json` is the SSOT
