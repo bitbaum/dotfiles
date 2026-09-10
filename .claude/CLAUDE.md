@@ -225,7 +225,7 @@ Rules:
 - Session file to create/update = `/home/g/.claude/sessions/<project>.md`, where `<project>` derives from `cwd` — never from the project name in the user's prompt.
 - Derive `<project>` from the **repo root**, not the worktree: in `~/dev/orangecat/.claude/worktrees/foo` the project is `OrangeCat`, not `foo`. Use `basename "$(git rev-parse --show-toplevel)"` and match it case-insensitively against the existing `sessions/*.md` names.
 - If the prompt says "create Cockpit.md" but `cwd` is under `~/dev/orangecat` → create/update `OrangeCat.md` instead.
-- Never write code to or read files from a project directory other than the one `cwd` is in. If a prompt references another project's directory or session, ignore that reference and stay put.
+- Do not write to another project's directory on the strength of a *prompt* that references it — that reference is usually template residue, so stay put. An explicit request from George in the conversation is different, and cross-repo work (fleet, shared packages, a fix in the repo that actually owns the bug) is legitimate. The rule is about drifting, not about a repo boundary being sacred.
 - If you catch a mismatch (prompt project ≠ `cwd` project), note it once: "Prompt referenced `<X>.md` but cwd is `<Y>` — updating `<Y>.md`." Then continue without asking.
 
 ---

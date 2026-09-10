@@ -44,3 +44,26 @@ jobs:
           done < <(grep -oP '^\s*link\s+\K\S+' install.sh || true)
           [ "$missing" -eq 0 ]
           echo "install targets: ok"
+
+      # The global CLAUDE.md loads into EVERY session, and there are commonly
+      # 5-20 at once. It reached 718 lines by accretion — roughly 400 of them
+      # general software engineering the model already does — which crowded out
+      # the ~200 that are actually local to this fleet. Cut to 242 in #63.
+      #
+      # This is a ratchet: the count may fall or hold, never rise. To add a
+      # section, lower something else, or raise BUDGET in the same commit so
+      # the decision is visible in the diff rather than inherited silently.
+      - name: CLAUDE.md budget
+        run: |
+          set -euo pipefail
+          BUDGET=242
+          count=$(grep -c '' .claude/CLAUDE.md)
+          if [ "$count" -gt "$BUDGET" ]; then
+            echo "CLAUDE.md is $count lines, over the $BUDGET-line budget by $((count - BUDGET))." >&2
+            echo "Cut something, or raise BUDGET in this workflow in the same commit." >&2
+            exit 1
+          fi
+          if [ "$count" -lt "$BUDGET" ]; then
+            echo "CLAUDE.md is $count lines, $((BUDGET - count)) under budget — lower BUDGET to lock the win in."
+          fi
+          echo "CLAUDE.md budget: ok ($count/$BUDGET lines)"
