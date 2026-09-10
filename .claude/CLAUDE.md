@@ -191,14 +191,14 @@ It is read from the session's **working directory**, so a lesson written in one
 repo is invisible from every other. When a lesson is fleet-wide, write it to the
 dotfiles silo (`-home-g-dev-dotfiles`) and leave a pointer where you learned it.
 
-**The memory MCP server is retired as a store** (2026-09-10). It held a second,
-parallel copy of the same knowledge — `project:*`, `session:*` and `decision:*`
-entities — which is Ground Truth #2 violated in the file that states it. Its
-`session:*` entities also duplicated `~/.claude/sessions/*.json`, which
-`fleet-status.sh` now reads, and its `project:*` state duplicated git. Do not
-write new entities. Existing graph data is left in place for sessions that are
-mid-flight; it is not authoritative, and the durable decisions in it have been
-migrated to files.
+**The memory MCP server is retired** (2026-09-10) and removed from
+`~/.claude.json`. It held a second, parallel copy of the same knowledge —
+`project:*`, `session:*`, `decision:*` — which is Ground Truth #2 violated in
+the file that states it; its `session:*` entities duplicated
+`~/.claude/sessions/*.json` and its `project:*` state duplicated git. Its three
+durable decisions were migrated to files first; the graph is archived at
+`~/.claude/mcp-data/memory.jsonl.retired-2026-09-10`. A session started before
+the removal still holds a live server — treat what it returns as unowned.
 
 ---
 
