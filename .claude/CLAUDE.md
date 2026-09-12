@@ -230,6 +230,55 @@ Rules:
 
 ---
 
+## Answer "what do we have?" from a register, never a grep
+
+`~/dev` is a PARTIAL copy of the org, so any "what exists / what uses this"
+answered by grepping local checkouts is wrong by construction. Read
+`fleet/registers/`: `packages.json` (every package + adopters BY NAME),
+`org.json`, `toolchain.json`, `retired.json` — derived from the org and
+refreshed weekly, so unlike prose they cannot drift. Regenerate and print with
+`fleet: node scripts/ci/shared-registry-audit.mjs`.
+
+Applies to JUDGEMENT, not just building: read it before proposing to delete,
+deprecate or consolidate anything shared. A grep for `@bitbaum/<name>` missed
+every consumer of packages installing under a bare name, and "nothing depends
+on these" nearly deleted bip-kit (8 adopters), limitkit (3), threadkit (3).
+**"I could not find it" is not "it does not exist"** — say which you mean.
+
+---
+
+## Never create a GitHub repository on your own initiative
+
+Ask first, every time; silence is no. Covers scaffolds, extractions, "-kit"
+packages, demos and probes, and is not satisfied by a good reason, by making it
+private, or by meaning to clean it up later. Agents commit under George's own
+identity, so an agent-made repo is indistinguishable from his: 27 of 48 repos
+had an agent-authored first commit and he recognised few of them. Build
+locally, show the diff, let him say yes. (A repo FleetCrown provisions because
+a USER clicked provision is the user acting, not you.)
+
+---
+
+## Clean up the experiment when the experiment is over
+
+Anything spun up to prove something — dogfood site, factory run, probe, scratch
+repo — is torn down in the SAME session, repository included. Not archived, not
+private: gone. Six such sites were still live days later, two reading as real
+Zurich businesses that do not exist, on George's own domain.
+
+Order matters: the project row is invisible from the box and re-creates the
+site within two minutes.
+
+    DELETE /api/projects/<entityId>?deleteLocal=1     # the project FIRST
+    bash scripts/hetzner/retire-site.sh <name> --mode delete --repo keep --go
+    gh repo delete bitbaum/<name> --yes   # the box token has no delete_repo
+    # then drop the row from scripts/hetzner/apps.conf in the same commit
+
+`fleetcrown: pnpm run check:no-experiment-litter` fails the build if a generated
+throwaway name reaches the committed register.
+
+---
+
 ## Working style
 
 - Plan mode when requirements are ambiguous or the change is architectural. If

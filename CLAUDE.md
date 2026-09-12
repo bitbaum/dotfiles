@@ -19,6 +19,8 @@ Two things used to live here and both moved out:
 ```
 .bashrc .ssh/config .editorconfig install.sh
 .config/          kitty, starship, zellij, git hooks
+scripts/          personal utilities for THIS machine (fleet-status.sh,
+                  fix-scans.sh) — not fleet automation, which lives in `fleet`
 .claude/hooks/    per-session edge only (see the table below)
 .claude/skills/   fix-lint, fix-types, write-tests
 SHARED.md         POINTER to bitbaum/fleet — the registry is maintained there

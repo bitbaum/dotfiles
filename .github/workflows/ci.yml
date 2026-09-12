@@ -48,7 +48,9 @@ jobs:
       # The global CLAUDE.md loads into EVERY session, and there are commonly
       # 5-20 at once. It reached 718 lines by accretion — roughly 400 of them
       # general software engineering the model already does — which crowded out
-      # the ~200 that are actually local to this fleet. Cut to 242 in #63.
+      # the ~200 that are actually local to this fleet. Cut to 242 in #63; raised to 291 in #66 for three rules that each
+      # record an incident from 2026-09-12 — litter left live, repos created
+      # unasked, and a grep that nearly deleted three load-bearing packages.
       #
       # This is a ratchet: the count may fall or hold, never rise. To add a
       # section, lower something else, or raise BUDGET in the same commit so
@@ -56,7 +58,7 @@ jobs:
       - name: CLAUDE.md budget
         run: |
           set -euo pipefail
-          BUDGET=242
+          BUDGET=291
           count=$(grep -c '' .claude/CLAUDE.md)
           if [ "$count" -gt "$BUDGET" ]; then
             echo "CLAUDE.md is $count lines, over the $BUDGET-line budget by $((count - BUDGET))." >&2
