@@ -230,6 +230,81 @@ Rules:
 
 ---
 
+## Answer "what do we have?" from a register, never from a grep
+
+`~/dev` is a PARTIAL copy of the org — 43 repos exist, fewer are checked out —
+so any question about what exists, what uses what, or what can be removed is
+wrong by construction when answered by grepping local checkouts. Read the
+generated registers in `fleet/registers/` first:
+
+    packages.json    every fleet package, its install line, and its adopters BY NAME
+    org.json         what repos exist and what they are
+    toolchain.json   versions the fleet standardises on
+    retired.json     what was removed, so it is not rebuilt
+
+They are derived from the org and refreshed weekly, so unlike prose they cannot
+drift. `fleet: node scripts/ci/shared-registry-audit.mjs` regenerates them and
+prints adopters per package; `SHARED.md` is the editorial layer on top.
+
+This applies to JUDGEMENT, not just building: before proposing to delete,
+deprecate, replace or "consolidate" anything shared, read the register. On
+2026-09-12 a grep for `@bitbaum/<name>` missed every consumer of packages that
+install under a bare name, and the conclusion drawn from it — "nothing depends
+on these" — would have deleted `bip-kit` (8 adopters), `limitkit` (3) and
+`threadkit` (3). The register had the right answer the whole time, one command
+away. **"I could not find it" is not "it does not exist"** — say which you mean.
+
+---
+
+## Never create a GitHub repository on your own initiative
+
+Ask first, in the conversation, every time — and take silence as no. This covers
+a scaffold, an extraction, a "-kit" pulled out of shared code, a demo, a probe,
+and anything the site factory would spin up while you are driving it. It is not
+satisfied by a good reason, by the repo being private, or by intending to clean
+it up later.
+
+Why it is a rule: agents commit under George's own git identity, so an
+agent-created repo is indistinguishable from one he made himself. On 2026-09-12
+he looked at his org and did not recognise several repos — "I don't know what
+hire is. I don't know what lifeops is... You just keep spinning them up without
+me allowing you." 27 of 48 repos had an agent-authored first commit. Nobody set
+out to do that; each one looked reasonable in the session that made it.
+
+A repository is public surface and permanent-feeling: it shows up in his
+account, it is what a client or a hire sees, and only he can judge whether a
+thing deserves to exist under his name. Work locally, show the diff, and let him
+say yes before anything reaches GitHub. (A repo FleetCrown provisions because a
+USER clicked provision is the user acting, not you.)
+
+---
+
+## Clean up the experiment when the experiment is over
+
+Anything spun up to prove something — a dogfood site, a site-factory run, an
+end-to-end probe, a scratch repo — is torn down in the SAME session that
+created it, including its GitHub repository. Not archived, not left private:
+gone. Do not ask whether to keep it; keeping it is the exception and needs a
+reason and a real name.
+
+Why it is a rule: on 2026-09-12 six such sites were still live days later, five
+with repos behind them, and two read as real Zurich businesses that do not
+exist, on George's own domain. The account becomes unreadable at a glance, the
+register stops meaning "things we run", and agents reading either infer that
+half-finished experiments are normal.
+
+    # 1. FleetCrown project FIRST — a project naming a dirPath is a standing
+    #    instruction to restore the site, and box-prepare re-clones it
+    DELETE /api/projects/<entityId>?deleteLocal=1
+    # 2. bash scripts/hetzner/retire-site.sh <name> --mode delete --repo keep --go
+    # 3. gh repo delete bitbaum/<name> --yes   # the box's token has no delete_repo
+    # 4. drop the row from scripts/hetzner/apps.conf in the same commit
+
+`fleetcrown: pnpm run check:no-experiment-litter` fails the build if a generated
+throwaway name is ever committed to the register.
+
+---
+
 ## Working style
 
 - Plan mode when requirements are ambiguous or the change is architectural. If
