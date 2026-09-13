@@ -318,7 +318,7 @@ fi
 # Only auto-attach for genuine human login terminals. Skip when:
 #   - already inside zellij ($ZELLIJ set), or
 #   - this is a programmatic `bash -c` launch ($BASH_EXECUTION_STRING set),
-#     e.g. the FleetCrown Fleet Runner spawning `bash -lic '... && claude'`
+#     e.g. the Loki Fleet Runner spawning `bash -lic '... && claude'`
 #     for an owned PTY. Auto-launching zellij there hijacks the runner's PTY
 #     before Claude can own it, so injected prompts never reach Claude.
 if [ -z "${ZELLIJ:-}" ] && [ -z "${BASH_EXECUTION_STRING:-}" ] && command -v zellij >/dev/null 2>&1; then
@@ -341,7 +341,7 @@ fi
 # claude() and codex() used to be defined here. Both were overridden ~130
 # lines below ("Override existing claude/codex"), so these copies never ran —
 # the live definitions are the later ones. cockpit() cd'd into ~/dev/cockpit,
-# which no longer exists (the repo became fleetcrown). Removed 2026-08-27.
+# which no longer exists (the repo became loki). Removed 2026-08-27.
 
 # Secrets (passwords, tokens) — loaded from .env, which is gitignored
 [ -f "$HOME/.env" ] && source "$HOME/.env"

@@ -254,7 +254,7 @@ packages, demos and probes, and is not satisfied by a good reason, by making it
 private, or by meaning to clean it up later. Agents commit under George's own
 identity, so an agent-made repo is indistinguishable from his: 27 of 48 repos
 had an agent-authored first commit and he recognised few of them. Build
-locally, show the diff, let him say yes. (A repo FleetCrown provisions because
+locally, show the diff, let him say yes. (A repo Loki provisions because
 a USER clicked provision is the user acting, not you.)
 
 ---
@@ -274,7 +274,7 @@ site within two minutes.
     gh repo delete bitbaum/<name> --yes   # the box token has no delete_repo
     # then drop the row from scripts/hetzner/apps.conf in the same commit
 
-`fleetcrown: pnpm run check:no-experiment-litter` fails the build if a generated
+`loki: pnpm run check:no-experiment-litter` fails the build if a generated
 throwaway name reaches the committed register.
 
 ---
