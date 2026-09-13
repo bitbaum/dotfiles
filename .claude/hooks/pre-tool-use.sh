@@ -7,7 +7,7 @@
 #
 # History: this hook used to pop a PyQt confirm dialog via
 # ~/dev/cockpit/scripts/beacon.py for rm -rf / force-push / DROP TABLE etc.
-# That script was deleted when the repo became fleetcrown and the beacon popup
+# That script was deleted when the repo became loki and the beacon popup
 # was removed from the product (commit 2391c6f), so the dialog could never
 # render — the empty result was treated as "deny", and every rm-containing
 # command was silently rejected with the misleading reason "Denied via dialog".

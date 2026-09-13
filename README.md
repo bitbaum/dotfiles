@@ -25,6 +25,6 @@ resolve here as pointers/shims, so nothing broke — but new work goes to
 `fleet`.
 
 **Agent dispatch** — the stop/notify loop, prompt injection and the PyQt
-beacon migrated to **FleetCrown** (Fleet Runner) over 2026-06.
+beacon migrated to **Loki** (Fleet Runner) over 2026-06.
 
 Product and business decisions belong in the repo that owns them.

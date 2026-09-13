@@ -50,7 +50,7 @@
         "hooks": [
           {
             "type": "command",
-            "command": "/home/g/.claude/hooks/fleetcrown-session-end.sh"
+            "command": "/home/g/.claude/hooks/loki-session-end.sh"
           }
         ]
       }
@@ -88,7 +88,7 @@
           },
           {
             "type": "command",
-            "command": "/home/g/.claude/hooks/fleetcrown-capture.sh"
+            "command": "/home/g/.claude/hooks/loki-capture.sh"
           }
         ]
       }

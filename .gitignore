@@ -4,16 +4,16 @@ __pycache__/
 *.pyc
 .claude/hooks/dangerous-commands.log
 
-# FleetCrown rewrites its own hooks here on every startup ("Do not edit; Fleet
-# Runner rewrites this file", says the file). Only fleetcrown-capture.sh was
+# Loki rewrites its own hooks here on every startup ("Do not edit; Fleet
+# Runner rewrites this file", says the file). Only loki-capture.sh was
 # listed, so when a second generated hook appeared this tree went permanently
 # dirty — and a permanently dirty tree is where genuinely stranded work hides.
 # Match the family, not the member.
-.claude/hooks/fleetcrown-*.sh
+.claude/hooks/loki-*.sh
 
 # Per-session agent worktrees — scratch, never part of the repo.
 .claude/worktrees/
 
-# FleetCrown Fleet Runner generates these on startup and rewrites them.
-# Their source is FleetCrown (capture-hook.ts), not this repo.
-.claude/hooks/fleetcrown-*.sh
+# Loki Fleet Runner generates these on startup and rewrites them.
+# Their source is Loki (capture-hook.ts), not this repo.
+.claude/hooks/loki-*.sh
