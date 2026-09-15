@@ -59,8 +59,6 @@ jobs:
       # push-triggered workflow is added.
       rearm_workflows: ci.yml
     secrets:
-      token: ${{ secrets.GITHUB_TOKEN }}
-    secrets:
       # Why a PAT and not the default token: THROUGHPUT.
       #
       # A dispatch made with GITHUB_TOKEN triggers no workflows — the same rule
