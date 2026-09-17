@@ -511,7 +511,7 @@ export PATH="$HOME/.grok/bin:$PATH"
 
 
 # Added by Antigravity CLI installer
-export PATH="/home/g/.local/bin:$PATH"
+export PATH="$HOME/.local/bin:$PATH"
 
 # Expose ~/.claude/bin (wt worktree helper + autopilot tools) on PATH.
 # Additive; safe to remove. See `wt --help` for isolated-worktree workflow.
