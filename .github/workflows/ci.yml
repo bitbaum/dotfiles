@@ -39,6 +39,13 @@ jobs:
       - name: PreToolUse guard
         run: bash .claude/hooks/tests/pre-tool-use.test.sh
 
+      # settings.json is the SSOT for what runs, so it and .claude/hooks/ must
+      # agree in BOTH directions: a registration with no committed file (the
+      # session-start.sh case) and a committed file nothing runs (the stale
+      # fleetcrown-* case) are the same bug from opposite ends.
+      - name: settings.json matches hooks
+        run: bash .claude/hooks/tests/settings-hooks-match.test.sh
+
       # Every symlink install.sh would create must point at a file that exists
       # in this repo — a dangling link is a broken shell on a new machine.
       - name: install.sh targets exist

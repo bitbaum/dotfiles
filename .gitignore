@@ -13,7 +13,3 @@ __pycache__/
 
 # Per-session agent worktrees — scratch, never part of the repo.
 .claude/worktrees/
-
-# Loki Fleet Runner generates these on startup and rewrites them.
-# Their source is Loki (capture-hook.ts), not this repo.
-.claude/hooks/loki-*.sh

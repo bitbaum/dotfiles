@@ -85,14 +85,35 @@
           {
             "type": "command",
             "command": "/home/g/.claude/hooks/keep-awake-acquire.sh"
-          },
+          }
+        ]
+      },
+      {
+        "hooks": [
           {
             "type": "command",
             "command": "/home/g/.claude/hooks/loki-capture.sh"
           }
         ]
       }
+    ],
+    "SessionStart": [
+      {
+        "hooks": [
+          {
+            "type": "command",
+            "command": "$HOME/dev/dotfiles/.claude/hooks/session-start.sh",
+            "timeout": 20,
+            "statusMessage": "Checking what other agents are doing..."
+          }
+        ]
+      }
     ]
+  },
+  "modelSettings": {
+    "claude-opus-5": {
+      "effortLevel": "high"
+    }
   },
   "autoUpdatesChannel": "stable",
   "tui": "fullscreen",
