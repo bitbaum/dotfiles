@@ -33,6 +33,12 @@ jobs:
           done < <(find . -name '*.sh' -not -path './.git/*')
           echo "shell syntax: ok ($found script(s) checked)"
 
+      # The PreToolUse hook gates every tool call in 5-20 concurrent sessions,
+      # so its guard has to be exact in both directions: a false positive stalls
+      # the fleet, a false negative re-opens the cwd leak of 2026-09-20.
+      - name: PreToolUse guard
+        run: bash .claude/hooks/tests/pre-tool-use.test.sh
+
       # Every symlink install.sh would create must point at a file that exists
       # in this repo — a dangling link is a broken shell on a new machine.
       - name: install.sh targets exist
