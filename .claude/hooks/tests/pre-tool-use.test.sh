@@ -55,6 +55,34 @@ run ALLOW 'ls -la /home/g/dev/dotfiles'
 echo "destructive commands are still allowed (audited, never blocked):"
 run ALLOW 'rm -rf /tmp/nothing-here-xyz'
 
+
+# --- unbounded wait loops -----------------------------------------------
+#
+# A polling loop with no deadline cannot report a problem, only hang. The case
+# that produced this guard spun 26 minutes waiting for a MERGED pull request's
+# headRefOid to change -- a field that freezes on merge, so the exit condition
+# was impossible rather than slow.
+#
+# Both directions matter as much as they do for the cd guard: block the
+# unbounded poll, but never a loop that is genuinely bounded, or the fleet's
+# deploy waits all start failing.
+
+echo "unbounded until/while + sleep must be blocked:"
+run BLOCK 'until [ "$(gh pr view 860 --json headRefOid --jq .headRefOid)" = "50f9647a" ]; do sleep 10; done'
+run BLOCK 'until curl -fsS https://loki.orangecat.ch/api/health | grep -q abc123; do sleep 45; done'
+run BLOCK 'while ! gh run view 123 --json status --jq .status | grep -q completed; do sleep 30; done'
+run BLOCK 'until pgrep -f "run verify" >/dev/null; do sleep 20; done; echo done'
+
+echo "bounded or non-polling loops must be allowed:"
+run ALLOW 'for i in $(seq 1 40); do s=$(gh pr view 1 --json state --jq .state); case "$s" in MERGED|CLOSED) break;; esac; sleep 15; done'
+run ALLOW 'i=0; while [ $i -lt 20 ]; do i=$((i+1)); sleep 5; done'
+run ALLOW 'timeout 300 bash -c "until curl -fsS http://x/health; do sleep 10; done"'
+run ALLOW 'while read -r line; do echo "$line"; done < /etc/hosts'
+run ALLOW 'until git diff --quiet; do break; done'
+run ALLOW 'sleep 5'
+run ALLOW 'gh pr checks 860 --repo bitbaum/loki --watch --fail-fast'
+
+
 if [ "$fail" -eq 0 ]; then
   echo "pre-tool-use guard: ok"
 else

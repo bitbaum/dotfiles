@@ -49,6 +49,28 @@ if [ "$TOOL_NAME" = "Bash" ]; then
     exit 2
   fi
 
+  # An UNBOUNDED polling loop. On 2026-09-22 a background shell spun for 26
+  # minutes on:
+  #     until [ "$(gh pr view 860 --jq .headRefOid)" = "50f9647a..." ]; do sleep 10; done
+  # The PR had already MERGED at a different commit, and a merged PR's
+  # headRefOid is frozen forever -- so the exit condition was unsatisfiable by
+  # construction, not slow. George found it, not the agent.
+  #
+  # Two rules come out of that, and only the first is mechanically checkable:
+  # a wait must be BOUNDED, so an impossible condition ends as a report instead
+  # of a hang. (The second -- poll a TERMINAL state like MERGED/CLOSED, never a
+  # field that only moves while the object is open -- no regex can enforce.)
+  #
+  # Narrow on purpose: only `until`/`while` loops that actually sleep, and only
+  # when nothing in the command looks like a bound. A `for i in $(seq ...)`
+  # loop, an explicit counter, $SECONDS, or a `timeout` wrapper all pass.
+  if printf '%s' "$COMMAND" | grep -qE '(^|[;&|[:space:]])(until|while)[[:space:]]'      && printf '%s' "$COMMAND" | grep -qE '(^|[;&|[:space:]])sleep[[:space:]]+[0-9]'; then
+    if ! printf '%s' "$COMMAND" | grep -qE '(seq[[:space:]]|SECONDS|\$\(\(|timeout[[:space:]]|max_?(tries|attempts|wait)|deadline|attempt)'; then
+      echo "Unbounded wait loop blocked: this 'until/while + sleep' has no deadline, so an exit condition that can never be met hangs forever instead of reporting (measured: 26 minutes on a merged PR whose headRefOid was frozen). Bound it AND poll a terminal state, e.g.:  for i in \$(seq 1 40); do s=\$(gh pr view N --json state --jq .state); case "\$s" in MERGED|CLOSED) break;; esac; sleep 15; done; [ -n "\$s" ] || echo 'STILL OPEN after 10m - investigate'  . For a command you started, prefer run_in_background and wait for its notification." >&2
+      exit 2
+    fi
+  fi
+
   DANGEROUS_PATTERN='(rm\s+-[rRfF]{1,3}\b|git\s+(push\s+[^|&;]*(-f|--force)|reset\s+--hard|clean\s+-[fdxX])|DROP\s+(TABLE|DATABASE|SCHEMA)|TRUNCATE\s+TABLE|dd\s+if=|mkfs\b|:\(\)\{.*\}|chmod\s+-R\s+777)'
 
   if echo "$COMMAND" | grep -qEi "$DANGEROUS_PATTERN"; then
