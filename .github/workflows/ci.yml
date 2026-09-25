@@ -71,7 +71,9 @@ jobs:
       - name: CLAUDE.md budget
         run: |
           set -euo pipefail
-          BUDGET=291
+          # 291 -> 302 (2026-09-25): "Chats: reuse the reference", added at
+          # George's request after 13 divergent chats in 10 repos.
+          BUDGET=302
           count=$(grep -c '' .claude/CLAUDE.md)
           if [ "$count" -gt "$BUDGET" ]; then
             echo "CLAUDE.md is $count lines, over the $BUDGET-line budget by $((count - BUDGET))." >&2

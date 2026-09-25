@@ -53,27 +53,13 @@ same PR so a human sees the decision.
 
 ## Chats: reuse the reference, never write one from scratch
 
-Every product here has an AI chat, and each was written fresh, so each forgot
-something another had already fixed. George then has to open every one, find
-the gap (usually the microphone) and ask again. On 2026-09-25 there were 13
-chats in 10 repos and no two behaved alike. That ends here:
-
-- **Before writing any chat, assistant or composer, open the reference** —
-  loki `/loki` (`src/components/loki/Composer.tsx`, `Thread.tsx`,
-  `MessageTurn.tsx`, `use-voice-input.ts`) — and carry its behaviour over.
-  Search the repo for an existing chat first; extend it, do not add a second.
-- **Meet the checklist in `fleet/SHARED.md` → "Chat — the standard"**, all nine
-  lines. The ones that get forgotten: a **mic in the composer** (Web Speech,
-  falling back to server transcription when it is missing *or silent*),
-  **16px+** text and input, a composer that belongs to the conversation (auto-
-  growing, Enter/Shift+Enter, above the soft keyboard), **Stop**, **Retry**,
-  markdown, and who is speaking when there is more than one agent.
-- Markup may follow each app's tokens; **behaviour may not differ.** A person
-  who has used one of our chats has used them all.
-- **Done means looked at and spoken to**: a screenshot at 390px and desktop,
-  and one real sentence through the mic.
-- A new composer file trips the ratchet (`shared-inventory.sh`, `chat-composer`).
-  If you truly need one, say why in the PR that raises the baseline.
+13 chats in 10 repos, each written fresh and each missing what another had
+fixed (usually the mic) — George found every gap himself. Before any chat,
+assistant or composer: extend the repo's existing chat if it has one, else start
+from loki `/loki`, and meet all of `fleet/SHARED.md` → "Chat — the standard"
+(mic with fallback, 16px+, composer part of the conversation, stop, retry,
+markdown, who speaks). Behaviour may not differ between apps. Done = a 390px
+screenshot and one sentence spoken through the mic.
 
 ## Design tokens
 
