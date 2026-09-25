@@ -2,7 +2,7 @@
 
 **Purpose**: the facts and house rules an agent cannot derive on its own.
 **Usage**: imported by project CLAUDE.md files with `@~/.claude/CLAUDE.md`
-**Last Updated**: 2026-09-10
+**Last Updated**: 2026-09-25
 
 Read `/home/g/dev/fleet/AGENTS.md` for the org-wide brief: producers and
 registers, shared names, and why your checkout may be feeding you stale
@@ -42,13 +42,24 @@ this, or teaching the machine to fix it forever?
 it before declaring anything done. Golden templates: `fleet/templates/ci/`.
 
 **Check `fleet/SHARED.md` before building anything cross-cutting** — AI calls,
-form fill, rate limiting, email, logging, health routes, CI sweeps. If a package
+form fill, rate limiting, email, logging, health routes, CI sweeps, **chat and
+voice input**. If a package
 there owns it, install it; do not write the second one. The duplication count is
 a ratchet (`fleet: scripts/ci/shared-inventory.sh --check`) — it may fall or
 hold, never rise. If a copy is genuinely justified, raise the baseline in the
 same PR so a human sees the decision.
 
 ---
+
+## Chats: reuse the reference, never write one from scratch
+
+13 chats in 10 repos, each written fresh and each missing what another had
+fixed (usually the mic) — George found every gap himself. Before any chat,
+assistant or composer: extend the repo's existing chat if it has one, else start
+from loki `/loki`, and meet all of `fleet/SHARED.md` → "Chat — the standard"
+(mic with fallback, 16px+, composer part of the conversation, stop, retry,
+markdown, who speaks). Behaviour may not differ between apps. Done = a 390px
+screenshot and one sentence spoken through the mic.
 
 ## Design tokens
 
