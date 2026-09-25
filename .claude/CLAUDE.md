@@ -2,7 +2,7 @@
 
 **Purpose**: the facts and house rules an agent cannot derive on its own.
 **Usage**: imported by project CLAUDE.md files with `@~/.claude/CLAUDE.md`
-**Last Updated**: 2026-09-10
+**Last Updated**: 2026-09-25
 
 Read `/home/g/dev/fleet/AGENTS.md` for the org-wide brief: producers and
 registers, shared names, and why your checkout may be feeding you stale
@@ -42,13 +42,38 @@ this, or teaching the machine to fix it forever?
 it before declaring anything done. Golden templates: `fleet/templates/ci/`.
 
 **Check `fleet/SHARED.md` before building anything cross-cutting** — AI calls,
-form fill, rate limiting, email, logging, health routes, CI sweeps. If a package
+form fill, rate limiting, email, logging, health routes, CI sweeps, **chat and
+voice input**. If a package
 there owns it, install it; do not write the second one. The duplication count is
 a ratchet (`fleet: scripts/ci/shared-inventory.sh --check`) — it may fall or
 hold, never rise. If a copy is genuinely justified, raise the baseline in the
 same PR so a human sees the decision.
 
 ---
+
+## Chats: reuse the reference, never write one from scratch
+
+Every product here has an AI chat, and each was written fresh, so each forgot
+something another had already fixed. George then has to open every one, find
+the gap (usually the microphone) and ask again. On 2026-09-25 there were 13
+chats in 10 repos and no two behaved alike. That ends here:
+
+- **Before writing any chat, assistant or composer, open the reference** —
+  loki `/loki` (`src/components/loki/Composer.tsx`, `Thread.tsx`,
+  `MessageTurn.tsx`, `use-voice-input.ts`) — and carry its behaviour over.
+  Search the repo for an existing chat first; extend it, do not add a second.
+- **Meet the checklist in `fleet/SHARED.md` → "Chat — the standard"**, all nine
+  lines. The ones that get forgotten: a **mic in the composer** (Web Speech,
+  falling back to server transcription when it is missing *or silent*),
+  **16px+** text and input, a composer that belongs to the conversation (auto-
+  growing, Enter/Shift+Enter, above the soft keyboard), **Stop**, **Retry**,
+  markdown, and who is speaking when there is more than one agent.
+- Markup may follow each app's tokens; **behaviour may not differ.** A person
+  who has used one of our chats has used them all.
+- **Done means looked at and spoken to**: a screenshot at 390px and desktop,
+  and one real sentence through the mic.
+- A new composer file trips the ratchet (`shared-inventory.sh`, `chat-composer`).
+  If you truly need one, say why in the PR that raises the baseline.
 
 ## Design tokens
 
