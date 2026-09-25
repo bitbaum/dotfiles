@@ -16,7 +16,9 @@
       "WebFetch",
       "WebSearch",
       "MultiEdit",
-      "TodoWrite"
+      "TodoWrite",
+      "EnterWorktree",
+      "ExitWorktree"
     ]
   },
   "hooks": {
@@ -105,6 +107,17 @@
             "command": "$HOME/dev/dotfiles/.claude/hooks/session-start.sh",
             "timeout": 20,
             "statusMessage": "Checking what other agents are doing..."
+          }
+        ]
+      }
+    ],
+    "PermissionRequest": [
+      {
+        "matcher": "EnterWorktree",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "/home/g/.claude/hooks/permission-request.sh"
           }
         ]
       }
