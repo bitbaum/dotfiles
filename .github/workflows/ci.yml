@@ -39,6 +39,11 @@ jobs:
       - name: PreToolUse guard
         run: bash .claude/hooks/tests/pre-tool-use.test.sh
 
+      # Auto-approves EnterWorktree into ~/dev/<repo>/.claude/worktrees/<name>
+      # only; an over-broad match would silently approve moving the permission root.
+      - name: PermissionRequest worktree approval
+        run: bash .claude/hooks/tests/permission-request.test.sh
+
       # settings.json is the SSOT for what runs, so it and .claude/hooks/ must
       # agree in BOTH directions: a registration with no committed file (the
       # session-start.sh case) and a committed file nothing runs (the stale
