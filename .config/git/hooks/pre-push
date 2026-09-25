@@ -3,8 +3,32 @@
 # Uses Claude Code to review the diff for regressions before pushing
 #
 # Skip with: git push --no-verify
+#
+# A hook must never be able to hang a push. Three things once did (2026-09-25:
+# pushes from agent sessions stalled 5+ minutes and read as a frozen shell):
+#  - the AI review ran with no time limit;
+#  - `read` prompts read git's stdin, which is the ref list, not a person;
+#  - nothing checked whether there was a person to answer at all.
+# So the review is bounded by `timeout`, runs only for a person at a terminal
+# (never inside a Claude Code session, where CLAUDECODE is set), and prompts
+# read /dev/tty, only when there is one.
 
 CLAUDE="$HOME/.nvm/versions/node/v22.22.0/bin/claude"
+REVIEW_TIMEOUT="${PRE_PUSH_REVIEW_TIMEOUT:-60}"
+
+# A person is here only if a terminal is attached and we are not an agent.
+_interactive() {
+  [ -z "$CLAUDECODE" ] && [ -t 1 ] && { : </dev/tty; } 2>/dev/null
+}
+
+# Ask a yes/no question; with no person to ask, the answer is the default (yes).
+_confirm() {
+  _interactive || return 0
+  local reply
+  read -p "$1 [Y/n] " -n 1 -r reply </dev/tty
+  echo
+  [[ ! $reply =~ ^[Nn]$ ]]
+}
 
 # --- GPG Signature Verification ---
 # Warn (don't block) if unsigned commits are about to be pushed
@@ -15,27 +39,27 @@ _check_signatures() {
   if [ -n "$unsigned" ]; then
     echo ""
     echo "WARNING: Unsigned commits detected:"
-    echo "$unsigned" | while read hash status msg; do
+    echo "$unsigned" | while read -r hash status msg; do
       echo "  $(echo "$hash" | cut -c1-8) $msg"
     done
     echo ""
-    read -p "Push unsigned commits? [Y/n] " -n 1 -r
-    echo
-    if [[ $REPLY =~ ^[Nn]$ ]]; then
+    if ! _confirm "Push unsigned commits?"; then
       echo "Push cancelled. Sign commits with: git commit --amend -S"
       exit 1
     fi
   fi
 }
 
-# Check if claude is available
-if [ ! -x "$CLAUDE" ]; then
+REVIEW_ENABLED=1
+if ! _interactive; then
+  REVIEW_ENABLED=0
+elif [ ! -x "$CLAUDE" ]; then
   echo "Warning: claude not found, skipping AI review"
-  # Still check signatures even without Claude
+  REVIEW_ENABLED=0
 fi
 
 # Read push info from stdin
-while read local_ref local_oid remote_ref remote_oid; do
+while read -r local_ref local_oid remote_ref remote_oid; do
   # Skip delete pushes
   if [ "$local_oid" = "0000000000000000000000000000000000000000" ]; then
     continue
@@ -53,18 +77,20 @@ while read local_ref local_oid remote_ref remote_oid; do
   # Check GPG signatures first (fast)
   _check_signatures "$BASE" "$local_oid"
 
+  [ "$REVIEW_ENABLED" = 1 ] || continue
+
   DIFF=$(git diff "$BASE".."$local_oid" --stat 2>/dev/null)
   DIFF_FULL=$(git diff "$BASE".."$local_oid" 2>/dev/null | head -c 8000)
   FILES_CHANGED=$(echo "$DIFF" | wc -l)
 
-  # Skip tiny changes (1-2 files, likely trivial)
+  # Skip tiny changes (likely trivial) — for this ref only, not the whole push
   if [ "$FILES_CHANGED" -le 3 ]; then
-    exit 0
+    continue
   fi
 
-  echo "Running AI review on $FILES_CHANGED changed files..."
+  echo "Running AI review on $FILES_CHANGED changed files (max ${REVIEW_TIMEOUT}s)..."
 
-  REVIEW=$($CLAUDE -p "You are reviewing a git diff before push. Be BRIEF (max 5 lines). Only flag REAL issues:
+  if ! REVIEW=$(timeout -k 5 "$REVIEW_TIMEOUT" "$CLAUDE" -p "You are reviewing a git diff before push. Be BRIEF (max 5 lines). Only flag REAL issues:
 - Bugs or logic errors
 - Security vulnerabilities
 - Accidentally committed secrets/debug code
@@ -76,11 +102,9 @@ Diff stat:
 $DIFF
 
 Diff (truncated):
-$DIFF_FULL" --max-turns 1 2>/dev/null)
-
-  if [ $? -ne 0 ]; then
-    echo "AI review failed (timeout/error), pushing anyway"
-    exit 0
+$DIFF_FULL" --max-turns 1 </dev/null 2>/dev/null); then
+    echo "AI review failed or took over ${REVIEW_TIMEOUT}s, pushing anyway"
+    continue
   fi
 
   # If Claude found issues, show them but don't block
@@ -90,9 +114,7 @@ $DIFF_FULL" --max-turns 1 2>/dev/null)
     echo "$REVIEW"
     echo "-----------------"
     echo ""
-    read -p "Push anyway? [Y/n] " -n 1 -r
-    echo
-    if [[ $REPLY =~ ^[Nn]$ ]]; then
+    if ! _confirm "Push anyway?"; then
       echo "Push cancelled."
       exit 1
     fi
