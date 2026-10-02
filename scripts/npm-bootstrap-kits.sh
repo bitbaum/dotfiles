@@ -7,7 +7,7 @@
 #
 #   bash ~/dev/dotfiles/scripts/npm-bootstrap-kits.sh
 set -uo pipefail
-NEW=(chatkit)                                           # not on npm yet
+NEW=()                                                  # add a new kit here before its first release
 # A laptop cannot attest provenance ("provider: null"); the first publish goes
 # without it, every CI publish after it carries it.
 TRUST=(sitekit limitkit chatkit design-tokens paykit)   # get OIDC publishing
@@ -29,7 +29,10 @@ for p in "${NEW[@]}"; do
 done
 
 for p in "${TRUST[@]}"; do
-  npm trust github "$(name "$p")" --repo "bitbaum/$p" --file publish.yml --yes \
+  # npm 11.x `trust` sends a body the registry now rejects ("value must be an
+  # array", then "permissions is required") — every call 400s. npm 12 sends
+  # [{..., permissions: [createPackage]}] and needs --allow-publish.
+  npx -y npm@12 trust github "$(name "$p")" --repo "bitbaum/$p" --file publish.yml --allow-publish --yes \
     && echo "$p: trusted publisher set" || echo "$p: trust FAILED (or already set)"
 done
-echo "Done. Tell Claude — it re-runs the waiting publishes (sitekit 0.3.1)."
+echo "Done. Releases are now: git tag vX.Y.Z && git push origin vX.Y.Z"
