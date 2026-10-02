@@ -8,6 +8,8 @@
 #   bash ~/dev/dotfiles/scripts/npm-bootstrap-kits.sh
 set -uo pipefail
 NEW=(chatkit)                                           # not on npm yet
+# A laptop cannot attest provenance ("provider: null"); the first publish goes
+# without it, every CI publish after it carries it.
 TRUST=(sitekit limitkit chatkit design-tokens paykit)   # get OIDC publishing
 
 npm whoami >/dev/null 2>&1 || npm login || exit 1
@@ -22,7 +24,7 @@ for p in "${NEW[@]}"; do
   install="pnpm install --frozen-lockfile --ignore-scripts"
   [ -f "$dir/package-lock.json" ] && install="npm ci --ignore-scripts"    # limitkit uses npm
   ( cd "$dir" && $install >/dev/null && npm run build >/dev/null \
-    && npm publish --access public ) && echo "$p $tag: PUBLISHED" || echo "$p $tag: publish FAILED"
+    && npm publish --access public --provenance=false ) && echo "$p $tag: PUBLISHED" || echo "$p $tag: publish FAILED"
   git -C "$HOME/dev/$p" worktree remove --force "$dir"
 done
 
