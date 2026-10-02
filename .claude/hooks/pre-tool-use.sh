@@ -71,13 +71,13 @@ if [ "$TOOL_NAME" = "Bash" ]; then
     fi
   fi
 
-  DANGEROUS_PATTERN='(rm\s+-[rRfF]{1,3}\b|git\s+(push\s+[^|&;]*(-f|--force)|reset\s+--hard|clean\s+-[fdxX])|DROP\s+(TABLE|DATABASE|SCHEMA)|TRUNCATE\s+TABLE|dd\s+if=|mkfs\b|:\(\)\{.*\}|chmod\s+-R\s+777)'
+  DANGEROUS_PATTERN='(rm\s+-[rRfF]{1,3}\b|git\s+(push\s([^|&;]*\s)?(-f|--force|--force-with-lease)(\s|$)|reset\s+--hard|clean\s+-[fdxX])|DROP\s+(TABLE|DATABASE|SCHEMA)|TRUNCATE\s+TABLE|dd\s+if=|mkfs\b|:\(\)\{.*\}|chmod\s+-R\s+777)'
 
   if echo "$COMMAND" | grep -qEi "$DANGEROUS_PATTERN"; then
     printf '%s\t%s\n' "$(date -Iseconds)" "$COMMAND" >> ~/.claude/hooks/dangerous-commands.log
     _DBUS="unix:path=/run/user/$(id -u)/bus"
     DISPLAY="${DISPLAY:-:1}" DBUS_SESSION_BUS_ADDRESS="$_DBUS" \
-      paplay /usr/share/sounds/freedesktop/stereo/dialog-warning.oga 2>/dev/null &
+      paplay /usr/share/sounds/freedesktop/stereo/dialog-warning.oga >/dev/null 2>&1 &
   fi
 
   echo "$ALLOW"
