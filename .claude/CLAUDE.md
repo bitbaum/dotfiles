@@ -2,11 +2,11 @@
 
 **Purpose**: the facts and house rules an agent cannot derive on its own.
 **Usage**: imported by project CLAUDE.md files with `@~/.claude/CLAUDE.md`
-**Last Updated**: 2026-09-25
+**Last Updated**: 2026-10-14
 
-Read `/home/g/dev/fleet/AGENTS.md` for the org-wide brief: producers and
-registers, shared names, and why your checkout may be feeding you stale
-instructions. This file does not restate it.
+Read [bitbaum/fleet AGENTS.md](https://github.com/bitbaum/fleet/blob/main/AGENTS.md)
+(`/home/g/dev/fleet/AGENTS.md` here) for producers, registers, names, packages
+by default, `@bitbaum/searchkit`, `@bitbaum/chatkit`. This file does not restate it.
 
 **What is deliberately NOT here.** General software engineering — DRY, KISS,
 YAGNI, separation of concerns, "comment WHY not WHAT", naming conventions,
