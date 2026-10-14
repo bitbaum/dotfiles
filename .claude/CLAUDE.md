@@ -5,10 +5,8 @@
 **Last Updated**: 2026-10-14
 
 Read [bitbaum/fleet AGENTS.md](https://github.com/bitbaum/fleet/blob/main/AGENTS.md)
-(`/home/g/dev/fleet/AGENTS.md` on this machine) for the org-wide brief:
-producers, registers, shared names, packages by default, search
-(`@bitbaum/searchkit`), chat (`@bitbaum/chatkit`), and why a checkout may be
-feeding you stale instructions. This file does not restate it.
+(`/home/g/dev/fleet/AGENTS.md` here) for producers, registers, names, packages
+by default, `@bitbaum/searchkit`, `@bitbaum/chatkit`. This file does not restate it.
 
 **What is deliberately NOT here.** General software engineering — DRY, KISS,
 YAGNI, separation of concerns, "comment WHY not WHAT", naming conventions,
