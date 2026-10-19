@@ -1,3 +1,4 @@
+<!-- docs-truth: paths-elsewhere — installed as ~/.claude/CLAUDE.md, so its paths describe whichever product repo a session is in -->
 # Global Engineering Standards
 
 **Purpose**: the facts and house rules an agent cannot derive on its own.
