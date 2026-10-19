@@ -1,4 +1,4 @@
-# Global Engineering Standards
+# Global Engineering Standards <!-- docs-truth: paths-elsewhere — installed as ~/.claude/CLAUDE.md, so its paths describe whichever product repo a session is in -->
 
 **Purpose**: the facts and house rules an agent cannot derive on its own.
 **Usage**: imported by project CLAUDE.md files with `@~/.claude/CLAUDE.md`
@@ -66,16 +66,16 @@ screenshot and one sentence spoken through the mic.
 `app/globals.css` (or `src/styles/globals.css`) is the ONLY source for colors,
 fonts, spacing, radii and shadows, as CSS custom properties — primitives first,
 then semantic tokens (`--color-brand`, `--color-surface`, `--radius-card`).
-`tailwind.config.ts` maps names to `var(--...)` and never holds a literal value.
-Components use semantic classes (`bg-action`), never arbitrary values or inline
-styles for brand decisions.
+Its `@theme` block (Tailwind 4) — or `tailwind.config.ts` on 3 — maps names to
+`var(--...)`, never a literal. Components use semantic classes (`bg-action`),
+never arbitrary values or inline styles for brand decisions.
 
 Why it's a rule and not a preference: with it, retheming a whole product is an
 edit to one file, and dark mode is a class that flips vars. Without it, "make it
 look like x.ai" means touching hundreds of components.
 
 Audit any UI work you touch: grep for `[#` in `src/` (arbitrary hex in a
-className) and for a literal `'#` in `tailwind.config.ts` (must be `var()`).
+className) and for a literal `'#` in the token mapping (must be `var()`).
 
 ---
 
