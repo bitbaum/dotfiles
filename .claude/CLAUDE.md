@@ -66,7 +66,9 @@ screenshot and one sentence spoken through the mic.
 `app/globals.css` (or `src/styles/globals.css`) is the ONLY source for colors,
 fonts, spacing, radii and shadows, as CSS custom properties — primitives first,
 then semantic tokens (`--color-brand`, `--color-surface`, `--radius-card`).
-`tailwind.config.ts` maps names to `var(--...)` and never holds a literal value.
+On Tailwind 4 (CSS-first) the `@theme` block in that same file maps names to
+`var(--...)`; a repo that still has `tailwind.config.ts` maps them there. Either
+way the mapping never holds a literal value.
 Components use semantic classes (`bg-action`), never arbitrary values or inline
 styles for brand decisions.
 
@@ -75,7 +77,7 @@ edit to one file, and dark mode is a class that flips vars. Without it, "make it
 look like x.ai" means touching hundreds of components.
 
 Audit any UI work you touch: grep for `[#` in `src/` (arbitrary hex in a
-className) and for a literal `'#` in `tailwind.config.ts` (must be `var()`).
+className) and for a literal `'#` in the token mapping (must be `var()`).
 
 ---
 
