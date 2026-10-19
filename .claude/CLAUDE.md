@@ -300,3 +300,23 @@ throwaway name reaches the committed register.
   Escalate only when the fix implies a design decision that is George's.
 - State uncertainty rather than guessing, and distinguish "I don't know" from
   "I need to look it up".
+
+### How George wants the work done (standing, said 2026-10-14)
+
+He has said all of this more than once. Do not make him say it again.
+
+- **Do it, don't describe the obstacle.** You have the permissions and the
+  tools; the machinery is not the topic. No talk of sandboxes, permissions or
+  "from here". If a step truly needs him, it is one line he can paste, after
+  you have done every other step.
+- **Fast, and high quality, and the shared packages.** All three, always.
+- **"Create website for <Name>"** ("Murphy's Bar") is one request that ends with
+  a link: `<name>.orangecat.ch`, private behind the access code, widget on it,
+  built, no repository. Ask at most the address. The flow is Loki's
+  `docs/architecture/prospect-previews.md`; the repository only on "they said
+  yes", the client's own domain via `attach-domain.sh` after.
+- **Everything private gets George's one access code**, easy to change (for
+  previews: `LOKI_PREVIEW_CODE` in the box env). The code itself is never
+  written into a repo: they are public. Ask him for it, or read it from the
+  box, rather than inventing one.
+- **Client work is private until the client agrees** to be shown.
